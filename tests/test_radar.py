@@ -132,3 +132,18 @@ def test_digest_guard_and_empty():
     store.set_meta(conn, "last_digest_sent_at", store.now_iso())
     assert not digest.is_due(conn, send_hour_utc=0)
     assert digest.build(conn, sample_cfg()) is None
+
+
+def test_dashboard_excludes_library_items(tmp_path):
+    conn = store.connect(":memory:")
+    store.upsert_items(conn, [
+        {"title": "Public arxiv paper", "url": "https://r/1", "source": "arxiv",
+         "source_type": "paper", "published_at": "2026-07-14"},
+        {"title": "MY-LIBRARY-only paper", "url": "https://r/2",
+         "source": "library: cites your library", "source_type": "paper",
+         "published_at": "2026-07-14"}])
+    for u in ("https://r/1", "https://r/2"):
+        store.apply_score(conn, store.compute_id({"url": u}), 9, "methods", "why", "keyword")
+    html = open(render.render(conn, sample_cfg(), str(tmp_path / "index.html")), encoding="utf-8").read()
+    assert "Public arxiv paper" in html
+    assert "MY-LIBRARY-only paper" not in html   # library items are digest-only
