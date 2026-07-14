@@ -18,7 +18,7 @@ import yaml
 
 from . import store, filter as flt, render as render_mod, digest as digest_mod
 from .net import PoliteSession, CONTACT_EMAIL
-from .collectors import openalex, arxiv, gnews, rss
+from .collectors import openalex, arxiv, gnews, rss, library
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -33,7 +33,7 @@ def _read(path: str) -> str:
         return f.read()
 
 
-def collect_all(sources: dict, window_days: int) -> tuple[list[dict], list[tuple]]:
+def collect_all(sources: dict, cfg: dict, window_days: int) -> tuple[list[dict], list[tuple]]:
     sess = PoliteSession()
     items: list[dict] = []
     records: list[tuple] = []
@@ -60,6 +60,10 @@ def collect_all(sources: dict, window_days: int) -> tuple[list[dict], list[tuple
     items.extend(feed_items)
     for name, ok, note in feed_records:
         records.append((f"rss:{name}", 0, ok, note))
+
+    lib_cfg = cfg.get("library", {})
+    if lib_cfg.get("enabled"):
+        guarded("library", lambda: library.collect(sess, lib_cfg, CONTACT_EMAIL))
     return items, records
 
 
@@ -107,7 +111,7 @@ def run_pipeline(args) -> int:
     db_path = args.db or os.path.join(ROOT, "data", "radar.db")
 
     if args.dry_run:
-        items, records = collect_all(sources, window_days)
+        items, records = collect_all(sources, cfg, window_days)
         print("=== DRY RUN — per-source counts (no writes) ===")
         for name, count, ok, note in records:
             print(f"  [{'ok ' if ok else 'FAIL'}] {name}: {note}")
@@ -121,7 +125,7 @@ def run_pipeline(args) -> int:
     summary: list[str] = []
 
     if stage in ("all", "collect"):
-        items, records = collect_all(sources, window_days)
+        items, records = collect_all(sources, cfg, window_days)
         new = store.upsert_items(conn, items)
         for name, count, ok, note in records:
             store.record_run(conn, name, count, 0, ok, note)

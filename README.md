@@ -59,14 +59,25 @@ open docs/index.html
 - **Digest** — one email per UTC day, grouped by workstream, with an optional
   one-paragraph Sonnet synthesis on top.
 
+## Library seeding from your Zotero / BibTeX export (opt-in)
+
+Point the radar at a `.bib` export of your reference library and it also surfaces
+recent papers that **cite something in your library** (new work building on what
+you read) and papers **by the authors you read most**. It's how you find papers
+"based on your papers' history."
+
+1. Export your Zotero library → `library/zotero.bib`.
+2. In `config.yaml`, set `library.enabled: true` (tune `discovery_days`,
+   `max_authors`).
+
+Privacy: the `.bib` is **git-ignored — never committed**. Only the DOIs are sent
+to OpenAlex (the same public API the rest of the pipeline uses); nothing else
+about your library leaves the machine. Implementation: `radar/collectors/library.py`.
+
 ## Roadmap (not built yet)
 
-- **Zotero library seeding** — point the radar at a `.bib` export of your
-  reference library so it (a) auto-fills `openalex.authors` / journal ISSNs from
-  what you actually read, and (b) scores new papers by how related they are to
-  your library (citation coupling via OpenAlex, or SPECTER2 embeddings). The
-  `authors` field and a `collectors/library.py` seam are reserved for this. Your
-  `.bib` would stay a local/secret input — never committed.
+- **Embedding similarity** — SPECTER2 / Semantic Scholar vectors for a
+  finer "more like my library" signal than citation coupling.
 - Author-watch lists, a searchable archive page, Zotero push for top scorers.
 
 ---

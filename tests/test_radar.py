@@ -8,6 +8,7 @@ sys.path.insert(0, ROOT)
 
 from radar import store, filter as flt, render, digest
 from radar.net import normalize_url
+from radar.collectors.library import parse_dois
 
 
 def sample_cfg():
@@ -62,7 +63,18 @@ def test_render_produces_page(tmp_path):
     out = render.render(conn, sample_cfg(), str(tmp_path / "index.html"))
     html = open(out, encoding="utf-8").read()
     assert "PLN grid study" in html
-    assert "Research Radar" in html  # title parameterized
+    assert "Pantau Research" in html  # title parameterized
+
+
+def test_parse_dois_cleans_and_dedupes(tmp_path):
+    bib = tmp_path / "lib.bib"
+    bib.write_text(
+        '@article{a, title={X}, doi = {10.1016/J.APENERGY.2020.114679}}\n'
+        '@article{b, title={Y}, doi = {https://doi.org/10.1109/tps.2019.123}}\n'
+        '@article{c, title={Z}, doi={10.1016/j.apenergy.2020.114679}}\n'  # dup of a (case)
+        '@misc{d, title={No DOI here}}\n', encoding="utf-8")
+    dois = parse_dois(str(bib))
+    assert dois == ["10.1016/j.apenergy.2020.114679", "10.1109/tps.2019.123"]
 
 
 def test_digest_guard_and_empty():

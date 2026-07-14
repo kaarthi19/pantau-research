@@ -36,3 +36,14 @@ digest:
 
 prune:
   keep_days: 180
+
+# Library-seeded discovery from your Zotero / BibTeX export (opt-in).
+# Export your Zotero library to library/zotero.bib (gitignored — never committed).
+# Then the radar also surfaces recent papers that CITE your library or are by
+# authors you read most. Only DOIs are sent to OpenAlex; the .bib stays local.
+library:
+  enabled: false            # set true after placing library/zotero.bib
+  bib_path: library/zotero.bib
+  discovery_days: 120       # lookback for citing papers / your authors' new work
+  max_authors: 15           # follow this many of your most-read authors
+  max_seed_works: 200       # cap library works used for citation discovery
