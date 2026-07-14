@@ -66,10 +66,11 @@ keywords:
            china, india]
   exclude: [horoscope, celebrity, recipe, football, cryptocurrency]
   tags:
-    ch3-garuda: [pln, ruptl, java-bali, sumatra, sulawesi, kalimantan,
-                 inter-island, super grid, indonesia grid, indonesia power]
-    ch4-reform: [market reform, unbundling, dispatch reform, tariff, pricing,
-                 regulator, pdp8, discom, provincial pilot, electricity market]
+    chapter3: [pln, ruptl, java-bali, sumatra, sulawesi, kalimantan,
+               inter-island, super grid, indonesia grid, indonesia power]
+    power-market-reform: [market reform, unbundling, dispatch reform, tariff,
+                          pricing, regulator, pdp8, discom, provincial pilot,
+                          electricity market]
     captive-coal: [captive, captive coal, nickel, smelter, imip, iwip,
                    industrial park, industrial ppa, off-grid industrial]
     apg-regional: [asean power grid, ltms, subsea cable, interconnector,

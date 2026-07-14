@@ -8,10 +8,10 @@ Methods: power system optimization (MILP, unit commitment, capacity and
 transmission expansion, decomposition methods, Julia/JuMP).
 
 WORKSTREAMS (tag with exactly one)
-- ch3-garuda: Indonesia power system planning & modeling — PLN, RUPTL,
+- chapter3: Indonesia power system planning & modeling — PLN, RUPTL,
   Java-Bali/Sumatra/Kalimantan/Sulawesi grids, inter-island interconnection,
   "super grid", dispatch, renewables integration in Indonesia.
-- ch4-reform: electricity market & regulatory reform in China, India,
+- power-market-reform: electricity market & regulatory reform in China, India,
   Indonesia, Vietnam — unbundling, dispatch reform, pricing/tariffs,
   regulators, PDP8, discoms, provincial pilots.
 - captive-coal: Indonesia captive/off-grid industrial power — captive coal,
@@ -39,9 +39,9 @@ two tags, prefer the more specific workstream. Output ONLY a JSON array:
 [{"id": "...", "score": 0-10, "tag": "<workstream|none>", "why": "<≤25 words>"}]
 
 EXAMPLES
-- "PLN delays 500 kV Sumatra–Java interconnection amid funding talks" → 9, ch3-garuda
+- "PLN delays 500 kV Sumatra–Java interconnection amid funding talks" → 9, chapter3
 - "IMIP signs 1.1 GW captive coal PPA extension for nickel expansion" → 10, captive-coal
-- "Vietnam approves revised PDP8 with higher offshore wind targets" → 8, ch4-reform
+- "Vietnam approves revised PDP8 with higher offshore wind targets" → 8, power-market-reform
 - "Accelerated Benders decomposition for stochastic transmission expansion planning" → 8, methods
 - "Singapore grants conditional licence for 1.4 GW import via subsea cable" → 8, apg-regional
 - "New MEMR director general for electricity appointed" → 7, stakeholder
