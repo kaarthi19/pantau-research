@@ -1,0 +1,71 @@
+# Your field's sources + keyword lists. This seed is configured for Southeast-Asia
+# power-sector research (the template author's field) — REPLACE it with your own:
+#   * openalex.queries / issns / authors  — your topics, journals, and (optional)
+#     OpenAlex author IDs to watch
+#   * arxiv.categories / terms            — your arXiv categories
+#   * gnews.queries                       — news searches (kill any returning >80% noise)
+#   * feeds                               — org RSS/Atom feeds (verify each returns items)
+#   * keywords                            — drive the prefilter + the $0 keyword scorer;
+#     tags.<key> must match the workstream keys in config.yaml
+#
+# LATER (per the README backlog): a `library.py` collector can auto-populate
+# openalex.authors / issns from your own Zotero .bib export — kept as a seam.
+
+openalex:
+  queries:
+    - "Indonesia power system planning"
+    - "captive coal nickel smelter electricity"
+    - "ASEAN power grid interconnection"
+    - "capacity expansion planning Southeast Asia"
+    - "electricity market reform Vietnam Indonesia"
+    - "transmission expansion decomposition"
+  issns:
+    - "0301-4215"   # Energy Policy (ISSN filter syntax verified)
+    - "0306-2619"   # Applied Energy
+    - "0140-9883"   # Energy Economics
+    - "0885-8950"   # IEEE Trans. Power Systems
+  authors: []       # optional OpenAlex author IDs to follow
+
+arxiv:
+  categories: [eess.SY, math.OC, econ.GN]
+  terms: []
+
+gnews:
+  queries:
+    - "Indonesia PLN power grid"
+    - "captive coal nickel Indonesia"
+    - "ASEAN power grid interconnection"
+    - "Vietnam PDP8 electricity"
+    - "Southeast Asia energy transition JETP"
+
+feeds:
+  - {name: IESR, url: "https://iesr.or.id/feed", source_type: org}
+  - {name: "Carbon Brief", url: "https://www.carbonbrief.org/feed/", source_type: org}
+  - {name: "Mongabay", url: "https://news.mongabay.com/feed/", source_type: org}
+  - {name: "Mongabay Indonesia", url: "https://www.mongabay.co.id/feed/", source_type: org}
+  - {name: "ADB", url: "https://www.adb.org/rss.xml", source_type: org}
+  - {name: "Zero Carbon Analytics", url: "https://zerocarbon-analytics.org/feed/", source_type: org}
+
+keywords:
+  topic: [power system, power sector, electricity, grid, transmission, dispatch,
+          capacity expansion, unit commitment, renewable, solar, wind, coal,
+          captive, smelter, nickel, interconnection, tariff, unbundling,
+          decarbonization, energy transition, PLN, RUPTL, PDP8, MILP,
+          optimization, JuMP]
+  region: [indonesia, vietnam, malaysia, singapore, philippines, asean,
+           southeast asia, emerging asia, java, sumatra, sulawesi, kalimantan,
+           china, india]
+  exclude: [horoscope, celebrity, recipe, football, cryptocurrency]
+  tags:
+    ch3-garuda: [pln, ruptl, java-bali, sumatra, sulawesi, kalimantan,
+                 inter-island, super grid, indonesia grid, indonesia power]
+    ch4-reform: [market reform, unbundling, dispatch reform, tariff, pricing,
+                 regulator, pdp8, discom, provincial pilot, electricity market]
+    captive-coal: [captive, captive coal, nickel, smelter, imip, iwip,
+                   industrial park, industrial ppa, off-grid industrial]
+    apg-regional: [asean power grid, ltms, subsea cable, interconnector,
+                   cross-border, singapore import, bilateral]
+    stakeholder: [pln, memr, esdm, evn, moit, tnb, jetp, etp, adb energy,
+                  iesr, wri, appointed, leadership, budget]
+    methods: [unit commitment, expansion planning, decomposition, benders,
+              stochastic, open model, optimization, milp, julia, jump, solver]

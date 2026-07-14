@@ -1,0 +1,38 @@
+# Research Radar configuration. Fork this repo and make it yours:
+#   * set `title`, `digest.recipient`
+#   * edit registry/sources.yaml (your queries, journals, feeds, keywords)
+#   * edit `tags` (your workstreams) and prompts/research.md (your profile+rubric)
+title: "Pantau Research"
+
+window_days: 7          # collectors ignore items older than this
+render_days: 14         # dashboard shows items from this window
+
+scoring:
+  mode: haiku           # haiku | keyword (auto-falls back to keyword with no ANTHROPIC_API_KEY)
+  model: claude-haiku-4-5
+  batch_size: 20
+  max_llm_items_per_run: 150
+
+prompt: prompts/research.md
+show_threshold: 6       # dashboard + digest inclusion floor
+highlight_threshold: 8  # "Top Picks" band
+
+# Workstreams — the tags the scorer assigns. Colors are Paul Tol *vibrant*.
+# Replace these with your own field's themes (keep keys in sync with the prompt).
+tags:
+  ch3-garuda:   {label: "Ch3 · GARUDA / Indonesia grid", color: "#0077BB"}
+  ch4-reform:   {label: "Ch4 · Power market reform",     color: "#33BBEE"}
+  captive-coal: {label: "Captive coal · Nickel",         color: "#CC3311"}
+  apg-regional: {label: "ASEAN Power Grid",              color: "#009988"}
+  stakeholder:  {label: "Stakeholder intel",             color: "#EE7733"}
+  methods:      {label: "Methods & tools",               color: "#EE3377"}
+
+digest:
+  enabled: true
+  send_hour_utc: 0
+  recipient: SET_ME@example.edu
+  synthesis: none       # none | sonnet
+  synthesis_model: claude-sonnet-4-6
+
+prune:
+  keep_days: 180
