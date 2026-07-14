@@ -20,9 +20,9 @@ highlight_threshold: 8  # "Top Picks" band
 # Workstreams — the tags the scorer assigns. Colors are Paul Tol *vibrant*.
 # Replace these with your own field's themes (keep keys in sync with the prompt).
 tags:
-  ch3-garuda:   {label: "Ch3 · GARUDA / Indonesia grid", color: "#0077BB"}
-  ch4-reform:   {label: "Ch4 · Power market reform",     color: "#33BBEE"}
-  captive-coal: {label: "Captive coal · Nickel",         color: "#CC3311"}
+  chapter3:   {label: "chapter3", color: "#0077BB"}
+  power-market-reform:   {label: "Power Market Reform",     color: "#33BBEE"}
+  captive-coal: {label: "Captive coal",         color: "#CC3311"}
   apg-regional: {label: "ASEAN Power Grid",              color: "#009988"}
   stakeholder:  {label: "Stakeholder intel",             color: "#EE7733"}
   methods:      {label: "Methods & tools",               color: "#EE3377"}
@@ -30,7 +30,7 @@ tags:
 digest:
   enabled: true
   send_hour_utc: 0
-  recipient: SET_ME@example.edu
+  recipient: kagnapathy@ucsd.edu
   synthesis: none       # none | sonnet
   synthesis_model: claude-sonnet-4-6
 
@@ -42,7 +42,7 @@ prune:
 # the top `top_n` into a "From your library" section. Only DOIs are sent to
 # OpenAlex; the library itself never leaves the machine / is never committed.
 library:
-  enabled: false
+  enabled: true
   source: zotero_api        # zotero_api (auto, no manual export) | bib (local file)
   every_days: 7             # run the library sweep at most weekly (it's a shortlist)
   top_n: 30                 # size of the "From your library" digest shortlist
@@ -52,7 +52,7 @@ library:
   # ZOTERO_API_KEY Actions secret. Find your numeric id at zotero.org/settings/keys
   # (personal "userID") or on the group page URL (group id).
   zotero_library_type: user   # user (personal library) | group (shared lab library)
-  zotero_library_id: SET_ME   # your numeric Zotero user id, or the group id
+  zotero_library_id: "13100523"   # numeric Zotero userID (the API key lives in ZOTERO_API_KEY, never here)
 
   # -- source: bib -- alternatively, a local export at this path (gitignored).
   bib_path: library/zotero.bib
