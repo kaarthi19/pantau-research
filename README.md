@@ -59,20 +59,44 @@ open docs/index.html
 - **Digest** — one email per UTC day, grouped by workstream, with an optional
   one-paragraph Sonnet synthesis on top.
 
-## Library seeding from your Zotero / BibTeX export (opt-in)
+## Library seeding from your Zotero library (opt-in)
 
-Point the radar at a `.bib` export of your reference library and it also surfaces
-recent papers that **cite something in your library** (new work building on what
-you read) and papers **by the authors you read most**. It's how you find papers
-"based on your papers' history."
+The radar can study your reference library and, once a week, surface a **top-N
+shortlist** of recent papers that **cite something in your library** (new work
+building on what you read) and papers **by the authors you read most** — the
+"papers based on your papers' history." The shortlist lands in a dedicated *From
+your library* block at the top of the digest.
 
-1. Export your Zotero library → `library/zotero.bib`.
-2. In `config.yaml`, set `library.enabled: true` (tune `discovery_days`,
-   `max_authors`).
+### Automated — no weekly export (`source: zotero_api`, recommended)
 
-Privacy: the `.bib` is **git-ignored — never committed**. Only the DOIs are sent
-to OpenAlex (the same public API the rest of the pipeline uses); nothing else
-about your library leaves the machine. Implementation: `radar/collectors/library.py`.
+If your library is synced to zotero.org, the pipeline pulls it over the read-only
+[Zotero Web API](https://www.zotero.org/support/dev/web_api/v3/start) each run —
+you never export a `.bib` by hand. Works for a **personal** library or a **shared
+lab group** library (great for a lab: everyone's collective reading in one radar).
+
+1. Create a **read-only** API key at <https://www.zotero.org/settings/keys> and add
+   it as the `ZOTERO_API_KEY` Actions secret.
+2. In `config.yaml → library`: set `enabled: true`, `source: zotero_api`,
+   `zotero_library_type: user|group`, and `zotero_library_id:` (your numeric user
+   id from the keys page, or the group id from the group URL).
+
+It runs at most weekly (`every_days`), so it doesn't rebuild every 4 hours.
+
+### Manual alternative (`source: bib`)
+
+Set `source: bib` and drop an export at `library/zotero.bib`.
+
+**Privacy:** only the **DOIs** are sent to OpenAlex (the same public API the rest
+of the pipeline uses). The library contents / your `.bib` are **never committed**
+(git-ignored) and never leave the machine otherwise. Implementation:
+`radar/collectors/library.py`.
+
+## Target journals
+
+`registry/sources.yaml → openalex.issns` is your **target-journal watchlist** —
+every new paper in those journals (within `window_days`) is pulled and scored.
+Add or remove ISSNs to match your field (find a journal's ISSN on its homepage or
+at portal.issn.org).
 
 ## Roadmap (not built yet)
 

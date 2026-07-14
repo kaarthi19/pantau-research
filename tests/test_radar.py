@@ -8,6 +8,7 @@ sys.path.insert(0, ROOT)
 
 from radar import store, filter as flt, render, digest
 from radar.net import normalize_url
+from radar.collectors import library
 from radar.collectors.library import parse_dois
 
 
@@ -75,6 +76,54 @@ def test_parse_dois_cleans_and_dedupes(tmp_path):
         '@misc{d, title={No DOI here}}\n', encoding="utf-8")
     dois = parse_dois(str(bib))
     assert dois == ["10.1016/j.apenergy.2020.114679", "10.1109/tps.2019.123"]
+
+
+class _FakeResp:
+    def __init__(self, payload): self._p = payload
+    def raise_for_status(self): pass
+    def json(self): return self._p
+
+
+class _FakeZoteroSession:
+    """Serves two pages of Zotero items then an empty page (pagination end)."""
+    def __init__(self):
+        self.calls = []
+        self._pages = [
+            [{"data": {"itemType": "journalArticle", "DOI": "10.1/AAA"}},
+             {"data": {"itemType": "book", "DOI": ""}},                       # no DOI
+             {"data": {"itemType": "journalArticle", "extra": "DOI: 10.1/bbb"}}],
+            [{"data": {"DOI": "10.1/AAA"}}],                                   # dup (case)
+        ]
+    def get(self, url, **kw):
+        start = kw.get("params", {}).get("start", 0)
+        idx = start // 100
+        return _FakeResp(self._pages[idx] if idx < len(self._pages) else [])
+
+
+def test_zotero_dois_paginates_dedupes_and_reads_extra():
+    dois = library.zotero_dois(_FakeZoteroSession(),
+                               {"zotero_library_id": "12345", "zotero_library_type": "user"})
+    assert dois == ["10.1/aaa", "10.1/bbb"]  # cleaned, deduped, DOI-from-extra picked up
+
+
+def test_zotero_dois_noop_without_id():
+    assert library.zotero_dois(_FakeZoteroSession(), {"zotero_library_id": "SET_ME"}) == []
+
+
+def test_library_shortlist_in_digest():
+    conn = store.connect(":memory:")
+    cfg = sample_cfg()
+    cfg["library"]["enabled"] = True
+    store.upsert_items(conn, [{"title": "Cites your library paper", "url": "https://l/1",
+                               "source": "library: cites your library", "source_type": "paper",
+                               "published_at": "2026-07-13"}])
+    lid = store.compute_id({"url": "https://l/1"})
+    store.apply_score(conn, lid, 9, "methods", "why", "keyword")
+    ctx = digest.build(conn, cfg)
+    assert ctx and ctx["library"] and ctx["library"][0]["title"].startswith("Cites")
+    # library rows must not also appear in the workstream groups
+    grouped = [it["title"] for g in ctx["groups"] for it in g["entries"]]
+    assert "Cites your library paper" not in grouped
 
 
 def test_digest_guard_and_empty():

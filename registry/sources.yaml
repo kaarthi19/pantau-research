@@ -19,12 +19,21 @@ openalex:
     - "capacity expansion planning Southeast Asia"
     - "electricity market reform Vietnam Indonesia"
     - "transmission expansion decomposition"
+  # TARGET JOURNALS — every new paper in these journals (within window_days) is
+  # pulled and scored. Add/remove ISSNs to match your field; find a journal's
+  # ISSN on its homepage or at portal.issn.org. Use the print OR electronic ISSN.
   issns:
-    - "0301-4215"   # Energy Policy (ISSN filter syntax verified)
+    - "0301-4215"   # Energy Policy
     - "0306-2619"   # Applied Energy
     - "0140-9883"   # Energy Economics
-    - "0885-8950"   # IEEE Trans. Power Systems
-  authors: []       # optional OpenAlex author IDs to follow
+    - "0885-8950"   # IEEE Transactions on Power Systems
+    - "0360-5442"   # Energy
+    - "1364-0321"   # Renewable & Sustainable Energy Reviews
+    - "0378-7796"   # Electric Power Systems Research
+    - "2542-4351"   # Joule
+    - "0973-0826"   # Energy for Sustainable Development
+  authors: []       # optional OpenAlex author IDs to follow (or let the library
+                    # feature auto-follow the authors you read most — see config.yaml)
 
 arxiv:
   categories: [eess.SY, math.OC, econ.GN]

@@ -37,13 +37,26 @@ digest:
 prune:
   keep_days: 180
 
-# Library-seeded discovery from your Zotero / BibTeX export (opt-in).
-# Export your Zotero library to library/zotero.bib (gitignored — never committed).
-# Then the radar also surfaces recent papers that CITE your library or are by
-# authors you read most. Only DOIs are sent to OpenAlex; the .bib stays local.
+# Library-seeded discovery (opt-in): study your Zotero library, then surface the
+# recent papers that CITE it or are by the authors you read most. digest.py pulls
+# the top `top_n` into a "From your library" section. Only DOIs are sent to
+# OpenAlex; the library itself never leaves the machine / is never committed.
 library:
-  enabled: false            # set true after placing library/zotero.bib
+  enabled: false
+  source: zotero_api        # zotero_api (auto, no manual export) | bib (local file)
+  every_days: 7             # run the library sweep at most weekly (it's a shortlist)
+  top_n: 30                 # size of the "From your library" digest shortlist
+
+  # -- source: zotero_api -- fetch the library from zotero.org each run.
+  # Create a READ-ONLY key at zotero.org/settings/keys and add it as the
+  # ZOTERO_API_KEY Actions secret. Find your numeric id at zotero.org/settings/keys
+  # (personal "userID") or on the group page URL (group id).
+  zotero_library_type: user   # user (personal library) | group (shared lab library)
+  zotero_library_id: SET_ME   # your numeric Zotero user id, or the group id
+
+  # -- source: bib -- alternatively, a local export at this path (gitignored).
   bib_path: library/zotero.bib
+
   discovery_days: 120       # lookback for citing papers / your authors' new work
   max_authors: 15           # follow this many of your most-read authors
   max_seed_works: 200       # cap library works used for citation discovery

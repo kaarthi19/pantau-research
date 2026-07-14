@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 
 import yaml
 
@@ -33,7 +34,23 @@ def _read(path: str) -> str:
         return f.read()
 
 
-def collect_all(sources: dict, cfg: dict, window_days: int) -> tuple[list[dict], list[tuple]]:
+def _library_due(conn, lib_cfg: dict) -> bool:
+    """Library discovery runs at most every `every_days` (default 7) — it's a
+    weekly shortlist, not something to rebuild every 4h. dry-run (conn=None) always runs."""
+    if conn is None:
+        return True
+    every = int(lib_cfg.get("every_days", 7))
+    last = store.get_meta(conn, "last_library_run")
+    if not last:
+        return True
+    try:
+        last_dt = datetime.strptime(last[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    return (datetime.now(timezone.utc) - last_dt).days >= every
+
+
+def collect_all(sources: dict, cfg: dict, window_days: int, conn=None) -> tuple[list[dict], list[tuple]]:
     sess = PoliteSession()
     items: list[dict] = []
     records: list[tuple] = []
@@ -62,8 +79,10 @@ def collect_all(sources: dict, cfg: dict, window_days: int) -> tuple[list[dict],
         records.append((f"rss:{name}", 0, ok, note))
 
     lib_cfg = cfg.get("library", {})
-    if lib_cfg.get("enabled"):
+    if lib_cfg.get("enabled") and _library_due(conn, lib_cfg):
         guarded("library", lambda: library.collect(sess, lib_cfg, CONTACT_EMAIL))
+        if conn is not None:
+            store.set_meta(conn, "last_library_run", store.now_iso())
     return items, records
 
 
@@ -125,7 +144,7 @@ def run_pipeline(args) -> int:
     summary: list[str] = []
 
     if stage in ("all", "collect"):
-        items, records = collect_all(sources, cfg, window_days)
+        items, records = collect_all(sources, cfg, window_days, conn=conn)
         new = store.upsert_items(conn, items)
         for name, count, ok, note in records:
             store.record_run(conn, name, count, 0, ok, note)

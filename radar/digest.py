@@ -40,10 +40,16 @@ def _since(conn) -> str:
 def build(conn, cfg: dict) -> dict | None:
     since = _since(conn)
     show = cfg["show_threshold"]
+    # Regular research since the last digest (library-sourced rows are handled
+    # separately below so they don't appear twice).
     rows = conn.execute(
-        "SELECT * FROM items WHERE score >= ? AND fetched_at >= ? ORDER BY score DESC",
+        "SELECT * FROM items WHERE score >= ? AND fetched_at >= ? "
+        "AND (source IS NULL OR source NOT LIKE 'library%') ORDER BY score DESC",
         (show, since)).fetchall()
-    if not rows:
+
+    library = _library_shortlist(conn, cfg)
+
+    if not rows and not library:
         return None
 
     tags = cfg["tags"]
@@ -56,14 +62,32 @@ def build(conn, cfg: dict) -> dict | None:
     if other:
         groups.append({"label": "Other", "color": "#888888", "entries": other})
 
+    total = len(rows) + len(library)
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return {
         "title": cfg.get("title", "Research Radar"),
-        "date": date, "n": len(rows), "groups": groups,
+        "date": date, "n": total, "groups": groups,
+        "library": library,
+        "library_label": f"From your library · top {len(library)}" if library else "",
         "synthesis": _maybe_synthesis(cfg, rows),
         "failures": store.recent_source_failures(conn, streak=3),
-        "subject": f"{cfg.get('title', 'Research Radar')} — {len(rows)} items · {date}",
+        "subject": f"{cfg.get('title', 'Research Radar')} — {total} items · {date}",
     }
+
+
+def _library_shortlist(conn, cfg: dict) -> list[dict]:
+    """Top-N library-sourced papers from the most recent weekly sweep."""
+    lib_cfg = cfg.get("library", {})
+    if not lib_cfg.get("enabled"):
+        return []
+    top_n = int(lib_cfg.get("top_n", 30))
+    window_days = int(lib_cfg.get("every_days", 7)) + 3
+    since = (datetime.now(timezone.utc) - timedelta(days=window_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = conn.execute(
+        "SELECT * FROM items WHERE source LIKE 'library%' AND score >= ? "
+        "AND fetched_at >= ? ORDER BY score DESC LIMIT ?",
+        (cfg["show_threshold"], since, top_n)).fetchall()
+    return [_shape(r) for r in rows]
 
 
 def _shape(r) -> dict:
@@ -93,6 +117,12 @@ def _text(ctx: dict) -> str:
     out = [f"{ctx['title']} — {ctx['date']}", f"{ctx['n']} items", ""]
     if ctx.get("synthesis"):
         out += [ctx["synthesis"], ""]
+    if ctx.get("library"):
+        out.append(f"== {ctx['library_label']} ==")
+        for it in ctx["library"]:
+            out.append(f"[{it['score']}] {it['title']} — {it['source']}\n"
+                       f"    {it['why']}\n    {it['url']}")
+        out.append("")
     for g in ctx["groups"]:
         out.append(f"== {g['label']} ==")
         for it in g["entries"]:
