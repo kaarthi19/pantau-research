@@ -135,6 +135,20 @@ def prune(conn, threshold: int, keep_days: int) -> int:
     return cur.rowcount
 
 
+def prune_runs(conn, keep_days: int = 30) -> int:
+    """Trim the per-source run log. It only feeds `recent_source_failures`,
+    which looks at the last 3 entries, so old rows are pure growth — one row per
+    source per sweep, forever, in a file that gets committed every run."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cur = conn.execute("DELETE FROM runs WHERE run_at < ?", (cutoff,))
+    conn.commit()
+    return cur.rowcount
+
+
 def vacuum(conn) -> None:
+    """Reclaim space after a prune. Deliberately NOT automatic: VACUUM rewrites
+    every page, which turns one committed sweep into a whole-file diff and
+    defeats git's delta compression. Run it by hand (`make vacuum`) once in a
+    while, not on a schedule."""
     conn.execute("VACUUM")
     conn.commit()

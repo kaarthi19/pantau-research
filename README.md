@@ -1,14 +1,17 @@
-# Pantau Research
+# ARGUS
 
-A personal, low-maintenance radar for a research field. It watches the
-literature and news — **papers** (OpenAlex, arXiv), **news** (Google News), and
-**org reports** (RSS) — scores each item for relevance to *your* work, and
-surfaces the good stuff on a phone-first dashboard and a once-a-day email.
+**Autonomous Research Gathering Utility System** — a personal, low-maintenance
+radar for a research field. It watches the literature and the news — **papers**
+(OpenAlex, arXiv), **news** (Google News), and **org reports** (RSS) — scores
+each item for relevance to *your* work, and surfaces the good stuff on a
+phone-first dashboard and a once-a-day email.
 
-`collect → store → filter (keyword prefilter → optional Haiku scoring) → dashboard + digest`.
-Runs free on GitHub Actions every 4 hours; state lives in a committed SQLite
+`collect → store → filter (keyword prefilter → optional LLM scoring) → dashboard + digest`
+
+Runs free on GitHub Actions every 8 hours; state lives in a committed SQLite
 file. Works with **no API key** (keyword scoring) and **no email** (dashboard
-only) — every capability degrades cleanly when its secret is absent.
+only) — every capability degrades cleanly when its secret is absent, and a run
+prints which scorer it actually used.
 
 > This is a **fork-per-person template**. Each researcher runs their own copy,
 > pointed at their own topics. It ships configured for one example field
@@ -17,33 +20,143 @@ only) — every capability degrades cleanly when its secret is absent.
 
 ## Make it yours (≈15 min)
 
-1. **Use this template / fork**, then in `config.yaml`: set `title`,
-   `digest.recipient`, and your **workstream `tags`** (the buckets the scorer
-   sorts items into — colors are Paul Tol *vibrant*).
+1. **Use this template / fork.** In `config.yaml`, set `title`,
+   `digest.recipient`, and your **workstream `tags`** — the buckets the scorer
+   sorts items into (colors are Paul Tol *vibrant*).
 2. In `registry/sources.yaml`, replace the example with your field:
    - `openalex.queries` — topic searches · `openalex.issns` — your journals
    - `arxiv.categories` — your arXiv categories · `gnews.queries` — news searches
    - `feeds` — org RSS/Atom feeds (confirm each returns items)
-   - `keywords` — power the prefilter + the free keyword scorer; `keywords.tags.<key>`
-     must match the `tags` keys in `config.yaml`
-3. In `prompts/research.md`, rewrite the researcher profile + rubric + few-shots
-   for your work. This is the system prompt used when Haiku scoring is on.
-4. **Enable Pages:** Settings → Pages → `main` / `docs/`. The dashboard URL is
-   public — this repo carries research only, so that's fine.
-5. **Add secrets** (Settings → Secrets → Actions), all optional:
-   - `ANTHROPIC_API_KEY` — switches scoring from keyword mode to Haiku (~$3–5/mo).
-   - `DIGEST_SMTP_USER` / `DIGEST_SMTP_PASS` — a Gmail address + **app password**
-     (account needs 2FA) for the daily digest.
+   - `keywords` — power the prefilter and the free keyword scorer;
+     `keywords.tags.<key>` must match the `tags` keys in `config.yaml` (CI checks this)
+3. In `prompts/research.md`, rewrite the researcher profile, rubric, and
+   few-shot examples for your work. This is the system prompt used for LLM scoring.
+4. **Pick a scorer** — see the table below. The free keyword scorer needs
+   nothing; an LLM scorer needs one API key, and several are free.
+5. **Turn on Actions.** Forks start with workflows disabled: open the Actions
+   tab and enable them. The dashboard publishes itself from there — the `pages`
+   workflow switches GitHub Pages on for you on its first run.
+
+## Scoring: bring your own model
+
+Set `scoring.provider` in `config.yaml` and add the matching secret under
+Settings → Secrets → Actions. Only the one you choose is needed.
+
+| `provider`   | Secret               | Default model                   | Cost |
+|--------------|----------------------|---------------------------------|------|
+| `keyword`\*  | —                    | —                               | **Free**, no key, no network |
+| `groq`       | `GROQ_API_KEY`       | `llama-3.3-70b-versatile`       | **Free tier** |
+| `gemini`     | `GEMINI_API_KEY`     | `gemini-2.0-flash`              | **Free tier** |
+| `openrouter` | `OPENROUTER_API_KEY` | `…-instruct:free`               | **Free** on `:free` models |
+| `ollama`     | —                    | `llama3.1`                      | **Free**, runs locally |
+| `anthropic`  | `ANTHROPIC_API_KEY`  | `claude-haiku-4-5`              | ~$1/$5 per Mtok |
+| `openai`     | `OPENAI_API_KEY`     | `gpt-4o-mini`                   | paid |
+| `deepseek`   | `DEEPSEEK_API_KEY`   | `deepseek-chat`                 | paid, cheap |
+| `together`   | `TOGETHER_API_KEY`   | `Llama-3.3-70B-Instruct-Turbo`  | paid |
+
+\* `keyword` is `scoring.mode: keyword` rather than a provider.
+
+At the default settings a sweep scores at most 150 items every 4 hours, which
+lands in single-digit dollars a month on a paid provider and inside the free
+tier on Groq or Gemini. Model IDs move around — these are defaults, and
+`scoring.model` overrides any of them.
+
+**Anything OpenAI-compatible works**, including a model your lab already hosts.
+Name it whatever you like and point ARGUS at it:
+
+```yaml
+scoring:
+  mode: llm
+  provider: lab-gateway
+  base_url: https://gpu.your-lab.edu/v1
+  api_key_env: LAB_GATEWAY_KEY
+  model: mixtral-8x7b
+```
+
+`ollama` and `lmstudio` run against `localhost`, so they work for `make run` on
+your own machine but not on a GitHub runner — a hosted runner can't reach your
+laptop. Use a hosted provider for the scheduled sweep, or keyword scoring.
+
+**If the key is missing, ARGUS scores with keywords and says so** rather than
+failing the run:
+
+```
+scoring: keyword — groq needs $GROQ_API_KEY — falling back to keyword scoring
+```
+
+## Relevance floors — and why an empty day is fine
+
+Every item gets a 0–10 relevance score, and three parameters in `config.yaml`
+decide what you actually see:
+
+| Parameter              | Default | Controls |
+|------------------------|---------|----------|
+| `show_threshold`       | 6       | Dashboard floor — nothing below this is displayed |
+| `highlight_threshold`  | 8       | The "Top Picks" band |
+| `digest.min_score`     | *unset* | Email floor; defaults to `show_threshold`. Raise it to keep the daily email tighter than the browsable dashboard |
+
+**ARGUS never tries to hit a quota.** There is no "find N papers" logic anywhere
+— every limit in the codebase is a *ceiling* (`max_llm_items_per_run` caps
+scoring cost, `LIMIT 8` caps the Top Picks band), never a floor. A sweep that
+turns up nothing above threshold renders `No research items above threshold yet`
+and sends no email that day. That is the intended behaviour, not a failure.
+
+Scores are also **write-once**: an item scored today is never re-scored to make
+it fit a later run. Raise the thresholds to make the radar pickier; lower them
+to widen the net.
+
+## The dashboard
+
+`docs/index.html` is self-contained, theme-aware, and phone-first: a workstream
+legend, a Top Picks band (≥ `highlight_threshold`, last 48h), and a reverse-chron
+list (≥ `show_threshold`), refreshing every 10 minutes.
+
+The `pages` workflow publishes it to
+`https://<you>.github.io/<repo>/` after every sweep, and **enables Pages on
+first run** so a fork needs no Settings clicks. Two caveats:
+
+- Pages on a **private** repo requires a paid GitHub plan. On a private free
+  repo the workflow logs a notice and skips — the sweep still succeeds, and you
+  can open `docs/index.html` locally.
+- The dashboard URL is public once published. This repo carries research only —
+  and library-seeded items are deliberately kept off the dashboard and confined
+  to the private email digest, since they reveal your reading.
+
+## Email digest (optional)
+
+One email per UTC day, grouped by workstream. Add `DIGEST_SMTP_USER` and
+`DIGEST_SMTP_PASS` (a Gmail address plus an **app password**; the account needs
+2FA). Set `digest.synthesis: llm` for a one-paragraph summary on top, which uses
+your scoring provider unless `digest.synthesis_provider` says otherwise.
 
 ## Local dev
 
 ```bash
 make install    # pip install -r requirements.txt
 make dry-run    # collect + per-source counts, no writes
-make run        # full pipeline in keyword mode
-make test       # offline unit tests
+make run        # full pipeline
+make test       # offline unit tests — no network, no keys
+make vacuum     # reclaim DB space after pruning (occasional; see below)
 open docs/index.html
 ```
+
+### Sweep cadence and the commit log
+
+Each sweep appends to a per-source run log, so the SQLite file changes every
+run and **one sweep is one commit** — the cadence in
+`.github/workflows/pipeline.yml` is the commit rate. Sweeping less often costs
+nothing: collectors look back `window_days` (7), so anything a missed sweep
+would have caught is picked up by the next one.
+
+Storage is not a concern. Git delta-compresses SQLite well — at 8-hourly, a
+year of history packs to roughly 30 MB.
+
+`prune.keep_run_days` (30) caps the run log, which is otherwise unbounded; only
+the last 3 entries per source are ever read, for the dashboard's
+source-failure banner. Pruning frees pages inside the file but doesn't shrink
+it — run `make vacuum` occasionally for that. It's deliberately manual: VACUUM
+rewrites every page, which turns one sweep into a whole-file diff and defeats
+git's delta compression.
 
 ## How it works
 
@@ -51,33 +164,29 @@ open docs/index.html
   Google News RSS, and any org feeds — politely (honest UA, per-host spacing,
   `window_days` cutoff). A failing source logs and is skipped, never killing the run.
 - **Filter** — a zero-cost prefilter (papers pass; news needs a topic hit;
-  excluded terms drop) then a scorer: **Haiku** (batched, temperature 0, strict
-  JSON) or **keyword** (the free fallback). Scores are write-once.
-- **Dashboard** (`docs/index.html`) — self-contained, theme-aware, phone-first:
-  a workstream legend, a Top Picks band (≥ `highlight_threshold`, last 48h), and a
-  reverse-chron list (≥ `show_threshold`), refreshing itself every 10 min.
-- **Digest** — one email per UTC day, grouped by workstream, with an optional
-  one-paragraph Sonnet synthesis on top.
+  excluded terms drop), then a scorer: an **LLM** (batched, temperature 0,
+  strict JSON, one retry) or **keyword** (the free fallback). Scores are
+  write-once, and a batch that fails leaves its items for the next run.
+- **Digest** — one email per UTC day, grouped by workstream.
 
 ## Library seeding from your Zotero library (opt-in)
 
-The radar can study your reference library and, once a week, surface a **top-N
+ARGUS can study your reference library and, once a week, surface a **top-N
 shortlist** of recent papers that **cite something in your library** (new work
-building on what you read) and papers **by the authors you read most** — the
-"papers based on your papers' history." The shortlist lands in a dedicated *From
-your library* block at the top of the digest.
+building on what you read) and papers **by the authors you read most**. The
+shortlist lands in a dedicated *From your library* block at the top of the digest.
 
 ### Automated — no weekly export (`source: zotero_api`, recommended)
 
-If your library is synced to zotero.org, the pipeline pulls it over the read-only
-[Zotero Web API](https://www.zotero.org/support/dev/web_api/v3/start) each run —
-you never export a `.bib` by hand. Works for a **personal** library or a **shared
-lab group** library (great for a lab: everyone's collective reading in one radar).
+If your library syncs to zotero.org, the pipeline pulls it over the read-only
+[Zotero Web API](https://www.zotero.org/support/dev/web_api/v3/start) each run.
+Works for a **personal** library or a **shared lab group** library — good for a
+lab, since it puts everyone's collective reading into one radar.
 
-1. Create a **read-only** API key at <https://www.zotero.org/settings/keys> and add
-   it as the `ZOTERO_API_KEY` Actions secret.
+1. Create a **read-only** API key at <https://www.zotero.org/settings/keys> and
+   add it as the `ZOTERO_API_KEY` Actions secret.
 2. In `config.yaml → library`: set `enabled: true`, `source: zotero_api`,
-   `zotero_library_type: user|group`, and `zotero_library_id:` (your numeric user
+   `zotero_library_type: user|group`, and `zotero_library_id` (your numeric user
    id from the keys page, or the group id from the group URL).
 
 It runs at most weekly (`every_days`), so it doesn't rebuild every 4 hours.
@@ -86,22 +195,38 @@ It runs at most weekly (`every_days`), so it doesn't rebuild every 4 hours.
 
 Set `source: bib` and drop an export at `library/zotero.bib`.
 
-**Privacy:** only the **DOIs** are sent to OpenAlex (the same public API the rest
-of the pipeline uses). The library contents / your `.bib` are **never committed**
-(git-ignored) and never leave the machine otherwise. Implementation:
-`radar/collectors/library.py`.
+**Privacy:** only the **DOIs** are sent to OpenAlex — the same public API the
+rest of the pipeline uses. Library contents and your `.bib` are **never
+committed** (git-ignored) and never leave the machine otherwise. Implementation:
+`argus/collectors/library.py`.
 
 ## Target journals
 
 `registry/sources.yaml → openalex.issns` is your **target-journal watchlist** —
 every new paper in those journals (within `window_days`) is pulled and scored.
-Add or remove ISSNs to match your field (find a journal's ISSN on its homepage or
-at portal.issn.org).
+Add or remove ISSNs to match your field (find a journal's ISSN on its homepage
+or at portal.issn.org).
+
+## Releases
+
+`argus/__init__.py` holds the canonical version. To cut one:
+
+```bash
+git tag v1.1.0 && git push origin v1.1.0
+```
+
+The `release` workflow verifies the tag against `__version__`, runs the tests,
+and publishes a GitHub Release from the matching [CHANGELOG.md](CHANGELOG.md)
+section. A tag that disagrees with the code fails instead of shipping.
+
+## License
+
+[MIT](LICENSE) — fork it, change it, use it however helps your work.
 
 ## Roadmap (not built yet)
 
-- **Embedding similarity** — SPECTER2 / Semantic Scholar vectors for a
-  finer "more like my library" signal than citation coupling.
+- **Embedding similarity** — SPECTER2 / Semantic Scholar vectors for a finer
+  "more like my library" signal than citation coupling.
 - Author-watch lists, a searchable archive page, Zotero push for top scorers.
 
 ---

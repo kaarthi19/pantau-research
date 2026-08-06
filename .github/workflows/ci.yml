@@ -1,0 +1,46 @@
+name: ci
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', 'data/**']   # the bot's own state commits aren't code
+  pull_request: {}
+  workflow_dispatch: {}
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python-version }}", cache: pip}
+      - run: pip install -r requirements.txt pytest
+      - name: Unit tests
+        run: python -m pytest tests/ -q     # offline: no network, no API keys
+      - name: Config and registry parse
+        run: |
+          python -c "
+          import yaml, argus
+          cfg = yaml.safe_load(open('config.yaml'))
+          src = yaml.safe_load(open('registry/sources.yaml'))
+          # Workstream tags must line up, or the scorer silently drops items into 'none'.
+          missing = set(src.get('keywords', {}).get('tags', {})) - set(cfg['tags'])
+          assert not missing, f'keywords.tags not in config tags: {missing}'
+          assert cfg['highlight_threshold'] >= cfg['show_threshold'], 'highlight < show threshold'
+          print(f'argus {argus.__version__} — config OK, {len(cfg[\"tags\"])} workstreams')
+          "
+      # Proves the "works with no API key" promise, writing outside the repo so
+      # the committed dashboard is never touched by a test run.
+      - name: Pipeline runs end-to-end with no secrets at all
+        run: |
+          python -m argus.run --stage score  --db "$RUNNER_TEMP/ci.db"
+          python -m argus.run --stage render --db "$RUNNER_TEMP/ci.db" --out "$RUNNER_TEMP/index.html"
+          grep -q "<title>" "$RUNNER_TEMP/index.html"
+          git diff --exit-code   # a test run must leave the tree clean

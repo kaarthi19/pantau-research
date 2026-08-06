@@ -2,9 +2,10 @@
 
 Stage 1 — prefilter (zero cost): papers always pass; news/org items need >=1
 topic hit; an exclude-term hit is a hard zero.
-Stage 2 — scorer: `haiku` (batched, temperature 0, strict JSON, one retry) or
-`keyword` (weighted keyword scoring, the $0 fallback). Items failing the
-prefilter are written as score 0 (scorer='prefilter') so they never re-queue.
+Stage 2 — scorer: `llm` (batched, temperature 0, strict JSON, one retry, any
+provider — see providers.py) or `keyword` (weighted keyword scoring, the $0
+fallback). Items failing the prefilter are written as score 0
+(scorer='prefilter') so they never re-queue.
 
 Tags are the workstreams defined in config.yaml; any tag the model returns that
 isn't configured collapses to "none".
@@ -12,7 +13,8 @@ isn't configured collapses to "none".
 from __future__ import annotations
 
 import json
-import os
+
+from . import providers
 
 
 def _hits(text: str, terms: list[str]) -> int:
@@ -58,7 +60,7 @@ def _result(item, score, tag, why, scorer, tags) -> dict:
     }
 
 
-def _clamp(raw: dict, tags: list[str]) -> dict:
+def _clamp(raw: dict, tags: list[str], scorer: str) -> dict:
     tag = raw.get("tag", "none")
     if tag not in tags:
         tag = "none"
@@ -71,7 +73,7 @@ def _clamp(raw: dict, tags: list[str]) -> dict:
         "score": max(0, min(10, score)),
         "tag": tag,
         "rationale": (raw.get("why") or raw.get("rationale") or "")[:280],
-        "scorer": "haiku",
+        "scorer": scorer,
     }
 
 
@@ -81,37 +83,34 @@ def _payload(items: list[dict]) -> str:
     return json.dumps(slim, ensure_ascii=False)
 
 
-def haiku_score(items: list[dict], model: str, system_prompt: str,
-                batch_size: int, tags: list[str]) -> list[dict]:
-    import anthropic
-
-    client = anthropic.Anthropic()
+def llm_score(items: list[dict], spec: dict, system_prompt: str,
+              batch_size: int, tags: list[str]) -> list[dict]:
+    """Score items in batches through whichever provider `spec` names. A batch
+    that fails (network, quota, unparseable JSON) is skipped, not fatal — those
+    items stay unscored and are retried on the next run."""
+    scorer = spec["provider"]
     results: list[dict] = []
     for start in range(0, len(items), batch_size):
         batch = items[start:start + batch_size]
-        by_id = {it["id"]: it for it in batch}
+        by_id = {it["id"] for it in batch}
         user = ("Score every item below. Return ONLY a JSON array, one object "
                 "per item, no markdown fences.\n\nITEMS:\n" + _payload(batch))
-        parsed = _call(client, model, system_prompt, user)
+        parsed = _call(spec, system_prompt, user)
         if parsed is None:
-            parsed = _call(client, model, system_prompt,
+            parsed = _call(spec, system_prompt,
                            user + "\n\nReturn valid JSON only — an array of objects.")
         if parsed is None:
             continue
         for raw in parsed:
-            if raw.get("id") in by_id:
-                results.append(_clamp(raw, tags))
+            if isinstance(raw, dict) and raw.get("id") in by_id:
+                results.append(_clamp(raw, tags, scorer))
     return results
 
 
-def _call(client, model, system_prompt, user) -> list[dict] | None:
-    try:
-        resp = client.messages.create(
-            model=model, max_tokens=2048, temperature=0, system=system_prompt,
-            messages=[{"role": "user", "content": user}])
-    except Exception:  # noqa: BLE001 — SDK already backs off 429/5xx
+def _call(spec, system_prompt, user) -> list[dict] | None:
+    text = providers.complete(spec, system_prompt, user, max_tokens=4096)
+    if not text:
         return None
-    text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
     text = text.replace("```json", "").replace("```", "").strip()
     s, e = text.find("["), text.rfind("]")
     if s == -1 or e == -1:
@@ -123,7 +122,18 @@ def _call(client, model, system_prompt, user) -> list[dict] | None:
     return data if isinstance(data, list) else None
 
 
-def scoring_mode(configured: str) -> str:
-    if configured == "haiku" and not os.environ.get("ANTHROPIC_API_KEY"):
-        return "keyword"
-    return configured
+def scoring_plan(scoring: dict) -> tuple[str, dict, str]:
+    """Decide how this run scores: ('llm'|'keyword', provider_spec, note).
+
+    Every capability degrades — a missing key downgrades to keyword scoring
+    rather than failing the run, which is what keeps ARGUS runnable with no
+    secrets at all.
+    """
+    if not providers.wants_llm(scoring):
+        return "keyword", {}, "keyword scoring (configured)"
+    spec = providers.resolve(scoring)
+    if not spec.get("model"):
+        return "keyword", spec, f"no model set for provider '{spec['provider']}'"
+    if not providers.has_credentials(spec):
+        return "keyword", spec, providers.missing_key_hint(spec)
+    return "llm", spec, providers.describe(spec)
