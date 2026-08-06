@@ -1,21 +1,45 @@
-# Research Radar configuration. Fork this repo and make it yours:
+# ARGUS configuration. Fork this repo and make it yours:
 #   * set `title`, `digest.recipient`
 #   * edit registry/sources.yaml (your queries, journals, feeds, keywords)
 #   * edit `tags` (your workstreams) and prompts/research.md (your profile+rubric)
-title: "Pantau Research"
+#   * pick a scoring provider below (several are free)
+title: "ARGUS"
 
 window_days: 7          # collectors ignore items older than this
 render_days: 14         # dashboard shows items from this window
 
+# How items get scored. `llm` uses whichever provider you name below; `keyword`
+# is the $0 fallback and needs no key at all. Either way, a missing API key
+# degrades to keyword scoring rather than failing the run.
+#
+# provider presets (see argus/providers.py, README for the full table):
+#   anthropic  ANTHROPIC_API_KEY   claude-haiku-4-5                    ~$1/$5 per Mtok
+#   groq       GROQ_API_KEY        llama-3.3-70b-versatile             FREE tier
+#   gemini     GEMINI_API_KEY      gemini-2.0-flash                    FREE tier
+#   openrouter OPENROUTER_API_KEY  ...:free models                     FREE
+#   openai     OPENAI_API_KEY      gpt-4o-mini
+#   deepseek   DEEPSEEK_API_KEY    deepseek-chat
+#   together   TOGETHER_API_KEY    Llama-3.3-70B-Instruct-Turbo
+#   ollama     (no key)            llama3.1          local only — `make run`, not Actions
+# Any other OpenAI-compatible endpoint works too: set provider to a name of
+# your choosing plus `base_url` and `api_key_env`.
 scoring:
-  mode: haiku           # haiku | keyword (auto-falls back to keyword with no ANTHROPIC_API_KEY)
-  model: claude-haiku-4-5
+  mode: llm             # llm | keyword
+  provider: anthropic
+  model: claude-haiku-4-5   # omit to take the provider's default
+  # base_url:           # only for a provider not in the preset table
+  # api_key_env:        # ditto — the env var holding the key
   batch_size: 20
   max_llm_items_per_run: 150
 
 prompt: prompts/research.md
-show_threshold: 6       # dashboard + digest inclusion floor
-highlight_threshold: 8  # "Top Picks" band
+
+# Relevance floors, on the scorer's 0-10 scale. Nothing below `show_threshold`
+# is ever displayed — an empty dashboard is a valid, expected outcome, not a
+# failure, and nothing in ARGUS tries to hit a quota of items. Raise these to
+# make the radar pickier; lower them to see more.
+show_threshold: 6       # dashboard floor (and the digest floor, unless digest.min_score is set)
+highlight_threshold: 8  # "Top Picks" band on the dashboard
 
 # Workstreams — the tags the scorer assigns. Colors are Paul Tol *vibrant*.
 # Replace these with your own field's themes (keep keys in sync with the prompt).
@@ -31,11 +55,18 @@ digest:
   enabled: true
   send_hour_utc: 0
   recipient: kagnapathy@ucsd.edu
-  synthesis: none       # none | sonnet
+  # min_score: 8        # email floor; defaults to show_threshold. Raise it to
+                        # keep the daily email tighter than the dashboard.
+                        # Zero qualifying items = no email that day.
+  synthesis: none       # none | llm — a one-paragraph intro on top of the digest
+  # By default synthesis reuses the scoring provider above. Override either:
+  # synthesis_provider: anthropic
   synthesis_model: claude-sonnet-4-6
 
 prune:
-  keep_days: 180
+  keep_days: 180        # drop below-threshold items older than this
+  keep_run_days: 30     # trim the per-source run log; only the last 3 entries
+                        # per source are ever read (failure detection)
 
 # Library-seeded discovery (opt-in): study your Zotero library, then surface the
 # recent papers that CITE it or are by the authors you read most. digest.py pulls

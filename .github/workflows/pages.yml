@@ -1,0 +1,64 @@
+# Publishes docs/ to GitHub Pages after every sweep.
+#
+# Fork-friendly by design: the preflight step turns Pages ON for you the first
+# time it runs, so a fork needs no Settings clicks. If Pages isn't available
+# (a private repo on the Free plan), the job says so and exits green rather
+# than painting the whole repo red.
+name: pages
+on:
+  workflow_run:
+    workflows: [pipeline]   # the sweep commits docs/ with [skip ci], so chain off it
+    types: [completed]
+  push:
+    branches: [main]
+    paths: ['docs/**']      # covers hand edits to the dashboard
+  workflow_dispatch: {}
+concurrency: {group: pages, cancel-in-progress: true}
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # workflow_run fires on completion of any kind — don't publish off a failed sweep.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Is Pages usable here?
+        id: preflight
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/pages" >/dev/null 2>&1; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif gh api --method POST "repos/$GITHUB_REPOSITORY/pages" \
+                 -f "build_type=workflow" >/dev/null 2>&1; then
+            echo "::notice::Enabled GitHub Pages for $GITHUB_REPOSITORY."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pages unavailable for $GITHUB_REPOSITORY, dashboard not published. Pages needs a public repo, or a paid plan for private ones. The sweep itself succeeded — open docs/index.html locally until then."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.preflight.outputs.ready == 'true'
+        with:
+          # workflow_run reports the SHA that triggered the *pipeline*, which is
+          # one commit behind the docs/ the pipeline just pushed. Take the branch tip.
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/configure-pages@v5
+        if: steps.preflight.outputs.ready == 'true'
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.preflight.outputs.ready == 'true'
+        with: {path: docs}
+
+      - id: deploy
+        if: steps.preflight.outputs.ready == 'true'
+        uses: actions/deploy-pages@v4

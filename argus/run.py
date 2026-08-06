@@ -1,12 +1,12 @@
-"""Research Radar orchestrator: collect -> store -> filter -> render -> digest.
+"""ARGUS orchestrator: collect -> store -> filter -> render -> digest.
 
 Every source is wrapped so one failure logs and continues. Scoring auto-selects
-keyword mode when ANTHROPIC_API_KEY is unset, so the whole pipeline is buildable
-and testable with no key.
+keyword mode when the configured provider's API key is unset, so the whole
+pipeline is buildable and testable with no key at all.
 
-    python -m radar.run                 # full pipeline
-    python -m radar.run --dry-run       # collect + per-source counts, no writes
-    python -m radar.run --stage collect # a single stage (state persists in the db)
+    python -m argus.run                 # full pipeline
+    python -m argus.run --dry-run       # collect + per-source counts, no writes
+    python -m argus.run --stage collect # a single stage (state persists in the db)
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def collect_all(sources: dict, cfg: dict, window_days: int, conn=None) -> tuple[
     return items, records
 
 
-def score(conn, cfg: dict, kw: dict, mode: str) -> dict:
+def score(conn, cfg: dict, kw: dict, mode: str, spec: dict) -> dict:
     rows = store.unscored(conn)
     items = [{k: r[k] for k in r.keys()} for r in rows]
     if not items:
@@ -106,12 +106,12 @@ def score(conn, cfg: dict, kw: dict, mode: str) -> dict:
 
     passing.sort(key=lambda x: x.get("published_at") or x.get("fetched_at") or "", reverse=True)
     cap = cfg["scoring"].get("max_llm_items_per_run", 150)
-    to_score = passing[:cap] if mode == "haiku" else passing
+    to_score = passing[:cap] if mode == "llm" else passing
 
-    if mode == "haiku":
+    if mode == "llm":
         prompt = _read(os.path.join(ROOT, cfg["prompt"]))
-        results = flt.haiku_score(to_score, cfg["scoring"]["model"], prompt,
-                                  cfg["scoring"].get("batch_size", 20), tags)
+        results = flt.llm_score(to_score, spec, prompt,
+                                cfg["scoring"].get("batch_size", 20), tags)
     else:
         results = [flt.keyword_score(it, kw, tags) for it in to_score]
 
@@ -127,7 +127,7 @@ def run_pipeline(args) -> int:
     sources = _load_yaml(os.path.join(ROOT, "registry", "sources.yaml"))
     kw = sources.get("keywords", {})
     window_days = cfg.get("window_days", 7)
-    db_path = args.db or os.path.join(ROOT, "data", "radar.db")
+    db_path = args.db or os.path.join(ROOT, "data", "argus.db")
 
     if args.dry_run:
         items, records = collect_all(sources, cfg, window_days)
@@ -139,9 +139,9 @@ def run_pipeline(args) -> int:
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = store.connect(db_path)
-    mode = flt.scoring_mode(cfg["scoring"].get("mode", "keyword"))
+    mode, spec, note = flt.scoring_plan(cfg.get("scoring", {}))
     stage = args.stage
-    summary: list[str] = []
+    summary: list[str] = [f"scoring: {mode} — {note}"]
 
     if stage in ("all", "collect"):
         items, records = collect_all(sources, cfg, window_days, conn=conn)
@@ -151,28 +151,38 @@ def run_pipeline(args) -> int:
         summary.append(f"collect: {len(items)} fetched, {new} new")
 
     if stage in ("all", "score"):
-        summary.append(f"score[{mode}]: {score(conn, cfg, kw, mode)}")
+        summary.append(f"score[{mode}]: {score(conn, cfg, kw, mode, spec)}")
 
     if stage in ("all", "render"):
-        summary.append(f"render: {render_mod.render(conn, cfg, os.path.join(ROOT, 'docs', 'index.html'))}")
+        out = args.out or os.path.join(ROOT, "docs", "index.html")
+        summary.append(f"render: {render_mod.render(conn, cfg, out)}")
 
     if stage in ("all", "digest"):
         summary.append(f"digest: {digest_mod.run(conn, cfg, force=args.force_digest)}")
 
     if stage == "all":
-        removed = store.prune(conn, cfg["show_threshold"], cfg.get("prune", {}).get("keep_days", 180))
-        if removed:
-            summary.append(f"prune: {removed} rows removed")
+        pcfg = cfg.get("prune", {})
+        removed = store.prune(conn, cfg["show_threshold"], pcfg.get("keep_days", 180))
+        removed_runs = store.prune_runs(conn, pcfg.get("keep_run_days", 30))
+        if removed or removed_runs:
+            summary.append(f"prune: {removed} items, {removed_runs} run-log rows removed")
+
+    if args.vacuum:
+        store.vacuum(conn)
+        summary.append("vacuum: database rewritten")
 
     print("\n".join(summary))
     return 0
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="radar")
+    p = argparse.ArgumentParser(prog="argus")
     p.add_argument("--config", default=os.path.join(ROOT, "config.yaml"))
     p.add_argument("--db", default=None)
+    p.add_argument("--out", default=None, help="dashboard path (default docs/index.html)")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--vacuum", action="store_true",
+                   help="reclaim space after pruning (rewrites the whole file — occasional, not scheduled)")
     p.add_argument("--force-digest", action="store_true")
     p.add_argument("--stage", default="all", choices=["all", "collect", "score", "render", "digest"])
     return run_pipeline(p.parse_args(argv))

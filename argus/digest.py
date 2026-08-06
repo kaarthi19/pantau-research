@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from . import store, mailer
+from . import store, mailer, providers
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
@@ -37,9 +37,16 @@ def _since(conn) -> str:
     return last if (last and last > floor) else floor
 
 
+def _floor(cfg: dict) -> int:
+    """Score an item must clear to be emailed. Defaults to the dashboard's
+    `show_threshold`; `digest.min_score` raises it so the daily email can be
+    stricter than the browsable dashboard."""
+    return int(cfg.get("digest", {}).get("min_score") or cfg["show_threshold"])
+
+
 def build(conn, cfg: dict) -> dict | None:
     since = _since(conn)
-    show = cfg["show_threshold"]
+    show = _floor(cfg)
     # Regular research since the last digest (library-sourced rows are handled
     # separately below so they don't appear twice).
     rows = conn.execute(
@@ -65,13 +72,13 @@ def build(conn, cfg: dict) -> dict | None:
     total = len(rows) + len(library)
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return {
-        "title": cfg.get("title", "Research Radar"),
+        "title": cfg.get("title", "ARGUS"),
         "date": date, "n": total, "groups": groups,
         "library": library,
         "library_label": f"From your library · top {len(library)}" if library else "",
         "synthesis": _maybe_synthesis(cfg, rows),
         "failures": store.recent_source_failures(conn, streak=3),
-        "subject": f"{cfg.get('title', 'Research Radar')} — {total} items · {date}",
+        "subject": f"{cfg.get('title', 'ARGUS')} — {total} items · {date}",
     }
 
 
@@ -86,7 +93,7 @@ def _library_shortlist(conn, cfg: dict) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM items WHERE source LIKE 'library%' AND score >= ? "
         "AND fetched_at >= ? ORDER BY score DESC LIMIT ?",
-        (cfg["show_threshold"], since, top_n)).fetchall()
+        (_floor(cfg), since, top_n)).fetchall()
     return [_shape(r) for r in rows]
 
 
@@ -96,21 +103,31 @@ def _shape(r) -> dict:
 
 
 def _maybe_synthesis(cfg, rows) -> str | None:
-    if cfg["digest"].get("synthesis") != "sonnet" or not os.environ.get("ANTHROPIC_API_KEY"):
+    """Optional one-paragraph intro. Runs on the same provider as scoring unless
+    `digest.synthesis_provider` overrides it; silently skipped if unavailable."""
+    dcfg = cfg.get("digest", {})
+    if str(dcfg.get("synthesis", "none")).lower() in ("none", "", "false"):
         return None
-    try:
-        import anthropic
-        client = anthropic.Anthropic()
-        lines = [f"- {r['title']}" for r in rows][:40]
-        resp = client.messages.create(
-            model=cfg["digest"].get("synthesis_model", "claude-sonnet-4-6"),
-            max_tokens=300, temperature=0,
-            messages=[{"role": "user", "content":
-                       "In 2-3 sentences, summarize what matters most in today's "
-                       "research digest:\n" + "\n".join(lines)}])
-        return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
-    except Exception:  # noqa: BLE001
+
+    scoring = dict(cfg.get("scoring", {}))
+    if dcfg.get("synthesis_provider"):
+        scoring["provider"] = dcfg["synthesis_provider"]
+        scoring.pop("base_url", None)
+        scoring.pop("api_key_env", None)
+    if dcfg.get("synthesis_model"):
+        scoring["model"] = dcfg["synthesis_model"]
+
+    spec = providers.resolve(scoring)
+    if not spec.get("model") or not providers.has_credentials(spec):
         return None
+
+    lines = [f"- {r['title']}" for r in rows][:40]
+    return providers.complete(
+        spec,
+        "You write terse, factual research summaries. No preamble.",
+        "In 2-3 sentences, summarize what matters most in today's research "
+        "digest:\n" + "\n".join(lines),
+        max_tokens=300) or None
 
 
 def _text(ctx: dict) -> str:

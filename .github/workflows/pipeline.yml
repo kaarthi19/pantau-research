@@ -1,27 +1,51 @@
 name: pipeline
 on:
-  schedule: [{cron: "17 */4 * * *"}]   # every 4h; expect jitter on public runners
+  # Every 8h. One commit per sweep is unavoidable (each run appends to the run
+  # log), so cadence == commit rate. Nothing is lost by sweeping less often:
+  # collectors look back `window_days` (7), so a missed sweep is picked up by
+  # the next one. Change to "17 */4 * * *" for 4-hourly, "17 0 * * *" for daily.
+  # Expect jitter — public runners are best-effort, not punctual.
+  schedule: [{cron: "17 */8 * * *"}]
   workflow_dispatch: {}
 concurrency: {group: pipeline, cancel-in-progress: false}
 permissions: {contents: write}
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 20   # a wedged collector should fail the run, not hang for 6h
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
+        with: {python-version: "3.12", cache: pip}
       - run: pip install -r requirements.txt
-      - run: python -m radar.run
+      - run: python -m argus.run
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Scoring: set whichever ONE matches config.yaml `scoring.provider`.
+          # All optional — with none set, ARGUS uses the free keyword scorer.
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY }}
+          TOGETHER_API_KEY:   ${{ secrets.TOGETHER_API_KEY }}
+          # Daily email digest (optional).
           DIGEST_SMTP_USER: ${{ secrets.DIGEST_SMTP_USER }}
           DIGEST_SMTP_PASS: ${{ secrets.DIGEST_SMTP_PASS }}
-          ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}   # read-only; for library.source=zotero_api
+          # Zotero library seeding (optional); read-only key.
+          ZOTERO_API_KEY:   ${{ secrets.ZOTERO_API_KEY }}
       - name: Commit state
         run: |
-          git config user.name  "research-radar-bot"
+          git config user.name  "argus-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add data/radar.db docs/
-          git diff --cached --quiet || git commit -m "pipeline run [skip ci]"
-          git push
+          git add data/argus.db docs/
+          git diff --cached --quiet && { echo "no changes to commit"; exit 0; }
+          git commit -m "pipeline run [skip ci]"
+          # A manual dispatch racing the cron leaves the remote ahead. Rebase and
+          # retry rather than losing a run whose data is already collected.
+          for attempt in 1 2 3; do
+            git push && exit 0
+            echo "push rejected (attempt $attempt) — rebasing onto origin/$GITHUB_REF_NAME"
+            git pull --rebase --autostash origin "$GITHUB_REF_NAME" || exit 1
+          done
+          exit 1

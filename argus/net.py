@@ -1,7 +1,9 @@
 """Polite HTTP client + shared text/URL helpers.
 
 Every collector shares one ``PoliteSession``: honest UA with a contact email,
-20s timeouts, and 0.5s spacing per host so we never hammer a source.
+20s timeouts, and 0.5s spacing per host so we never hammer a source. Forks
+inherit the ARGUS UA — swap ``CONTACT_EMAIL`` if you want sources to reach you
+rather than the upstream project.
 """
 from __future__ import annotations
 
@@ -12,14 +14,16 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 import requests
 
-CONTACT_EMAIL = "pantau-bot@users.noreply.github.com"
+from . import __version__
+
+CONTACT_EMAIL = "argus-bot@users.noreply.github.com"
 # A browser-shaped UA with an honest contact comment. Several publisher feeds
 # (Carbon Brief, Mongabay) 403 a bare bot UA; this keeps us readable to them
 # while still identifying the project and a contact address.
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/125.0 Safari/537.36 "
-    f"pantau/2.0 (+{CONTACT_EMAIL})"
+    f"argus/{__version__} (+{CONTACT_EMAIL})"
 )
 TIMEOUT = 20
 HOST_SPACING = 0.5  # seconds between requests to the same host

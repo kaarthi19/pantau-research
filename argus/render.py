@@ -59,7 +59,7 @@ def build_context(conn, cfg: dict) -> dict:
         }
 
     return {
-        "title": cfg.get("title", "Research Radar"),
+        "title": cfg.get("title", "ARGUS"),
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "top_picks": [shape(r) for r in top],
         "items": [shape(r) for r in listing],

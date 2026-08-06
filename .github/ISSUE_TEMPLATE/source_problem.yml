@@ -1,0 +1,54 @@
+name: A source stopped working
+description: A feed, journal, or collector returns nothing, errors, or floods the radar with noise
+labels: [source]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a **source** misbehaves for everyone — a publisher starts
+        403ing, a feed URL moves, an API changes shape.
+
+        If it's only *your* queries, journals, or feeds that need changing,
+        that's `registry/sources.yaml` in your own fork, not an upstream issue.
+
+  - type: dropdown
+    id: collector
+    attributes:
+      label: Which collector
+      options: [openalex, arxiv, gnews, "rss (an org feed)", "library (Zotero)"]
+    validations: {required: true}
+
+  - type: input
+    id: source-name
+    attributes:
+      label: Source name or URL
+      description: The feed URL, journal ISSN, or query, as it appears in registry/sources.yaml.
+    validations: {required: true}
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: Symptom
+      options:
+        - Returns zero items (but should have some)
+        - Errors or times out
+        - Returns items, but almost all irrelevant
+        - Duplicates items already collected
+    validations: {required: true}
+
+  - type: textarea
+    id: dry-run
+    attributes:
+      label: "`make dry-run` output for that source"
+      description: >-
+        Per-source counts with no writes — the fastest way to confirm it's the
+        source and not the filter. Just the relevant lines is fine.
+      placeholder: "  [FAIL] rss:carbonbrief: HTTPError: 403 Client Error"
+      render: text
+    validations: {required: false}
+
+  - type: markdown
+    attributes:
+      value: |
+        The dashboard footer flags any source that has failed three runs in a
+        row — if you see that banner, the source name in it is what to report.
