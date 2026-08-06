@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in ARGUS behaves differently than documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Filing this on the right repo?** If this page says *"forked from …"* at
+        the top, you're on your own fork and nobody else will see this. Click
+        through to the parent repository and file it there.
+
+        Please don't paste API keys, your `.bib`, or your library contents.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations: {required: true}
+
+  - type: textarea
+    id: scoring-line
+    attributes:
+      label: The scoring line from the run
+      description: >-
+        Every run prints which scorer it selected and why — the single most
+        useful line for diagnosis. From the Actions log, or `make run` locally.
+      placeholder: "scoring: keyword — groq needs $GROQ_API_KEY — falling back to keyword scoring"
+      render: text
+    validations: {required: false}
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen
+      options:
+        - Collecting (a source returns nothing, or errors)
+        - Scoring (wrong scores, wrong workstream tags, provider errors)
+        - Dashboard (docs/index.html, or GitHub Pages publishing)
+        - Digest (the daily email)
+        - Library seeding (Zotero)
+        - Workflows (pipeline, ci, pages, release)
+        - Something else
+    validations: {required: true}
+
+  - type: input
+    id: provider
+    attributes:
+      label: Scoring provider
+      description: From `scoring.provider` in config.yaml — or "keyword".
+      placeholder: groq
+    validations: {required: false}
+
+  - type: input
+    id: version
+    attributes:
+      label: ARGUS version
+      description: "`python -c \"import argus; print(argus.__version__)\"`, or the release tag."
+      placeholder: "1.1.0"
+    validations: {required: false}
+
+  - type: dropdown
+    id: where-running
+    attributes:
+      label: Running where
+      options: [GitHub Actions, Locally, Both]
+    validations: {required: true}
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: The run summary and any traceback. Redact keys first.
+      render: text
+    validations: {required: false}

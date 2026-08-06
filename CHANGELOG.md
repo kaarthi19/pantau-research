@@ -44,6 +44,21 @@ single machine.
   unboundedly, one row per source per sweep. Only the last 3 entries per source
   are ever read, for the dashboard's failure banner.
 - `MIT LICENSE`.
+- **Contribution guide** — `CONTRIBUTING.md`, three structured issue forms (bug,
+  broken source, feature/provider request), and a PR template. All of it leads
+  with the fork-per-person trap: issues opened on your own fork go to your own
+  tracker, so reports have to go upstream. It also draws the line between
+  personal config (topics, journals, thresholds, prompt — stays in your fork)
+  and changes to how ARGUS works (upstream).
+- **Failure alerting** (`.github/workflows/alert.yml`) — a failed sweep opens a
+  GitHub issue with the run link and a triage checklist, instead of failing
+  silently until someone thinks to check the Actions tab. It keeps one issue
+  open (repeat failures are comments, not new issues) and closes it
+  automatically when a sweep next succeeds. `cancelled` and `skipped` runs are
+  ignored as deliberate. Set the `ALERT_ASSIGNEE` repository variable to route
+  alerts to a person; it falls back to the repository owner, and an assignee
+  the API rejects (an org, say) downgrades to an unassigned issue rather than
+  losing the alert.
 - `--vacuum` and `make vacuum` to reclaim space after pruning. `store.vacuum()`
   existed but was unreachable dead code. It stays manual on purpose: VACUUM
   rewrites every page, which turns one sweep into a whole-file diff and defeats

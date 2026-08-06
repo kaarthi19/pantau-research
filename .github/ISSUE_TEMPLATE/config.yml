@@ -1,0 +1,17 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setting up your own copy
+    url: https://github.com/Power-Lab/argus#make-it-yours-15-min
+    about: >-
+      Changing topics, journals, feeds, thresholds, or the scoring provider is
+      configuration, not a bug — the README walks through all of it.
+  - name: Which scorer am I actually using?
+    url: https://github.com/Power-Lab/argus#scoring-bring-your-own-model
+    about: >-
+      Every run prints the scorer it selected and why. A missing API key
+      degrades to keyword scoring rather than failing, and says so in the log.
+  - name: How to contribute
+    url: https://github.com/Power-Lab/argus/blob/main/CONTRIBUTING.md
+    about: >-
+      Reporting a problem, sending a fix, and what belongs in your fork versus
+      upstream.

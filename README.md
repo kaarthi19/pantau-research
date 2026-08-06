@@ -219,6 +219,38 @@ The `release` workflow verifies the tag against `__version__`, runs the tests,
 and publishes a GitHub Release from the matching [CHANGELOG.md](CHANGELOG.md)
 section. A tag that disagrees with the code fails instead of shipping.
 
+## Contributing
+
+Bug reports, fixes, and new providers are all welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
+The one thing worth knowing up front, because ARGUS is a fork-per-person
+template:
+
+> **Issues you open on your own fork go to your own tracker, where nobody will
+> see them.** Report problems on the **upstream** repo — the one you forked
+> *from*. If the top of the page says *"forked from …"*, click through to the
+> parent and file it there.
+
+| You want to… | Do this |
+|---|---|
+| Change your topics, journals, feeds, thresholds, or prompt | Edit your fork. That's configuration, not a bug. |
+| Report a broken feed or collector | [Open an issue](../../issues/new/choose) → *A source stopped working* |
+| Report a bug in scoring, the dashboard, digest, or a workflow | [Open an issue](../../issues/new/choose) → *Bug report* |
+| Suggest a provider or feature | [Open an issue](../../issues/new/choose) → *Feature or provider request* |
+| Send a fix | Fork → branch → `make test` → PR. CI must be green. |
+
+Two things make a report immediately actionable: **the scoring line** the run
+prints (`scoring: keyword — groq needs $GROQ_API_KEY — …`), and **which source**
+is failing (`make dry-run` gives per-source counts without writing anything).
+Never paste an API key or your library contents.
+
+**ARGUS reports its own failures.** Because it runs unattended, a broken sweep
+would otherwise be invisible until someone opened the Actions tab. The `alert`
+workflow opens an issue when the pipeline fails, keeps a single thread for
+repeat failures, and closes it automatically once a sweep succeeds. Set the
+`ALERT_ASSIGNEE` repository variable to a username to route those to a person.
+
 ## License
 
 [MIT](LICENSE) — fork it, change it, use it however helps your work.

@@ -1,0 +1,111 @@
+# Turns a silently-failing sweep into a GitHub issue.
+#
+# ARGUS runs unattended, so a broken pipeline is invisible unless someone thinks
+# to open the Actions tab — which is how an 18-minute runner-allocation failure
+# went unnoticed. This opens one issue on failure, comments on it if the failure
+# repeats, and closes it automatically when a sweep next succeeds.
+#
+# Deliberately one issue, not one per failure: a source that has been down for
+# three days should be a single thread with three comments, not three issues.
+#
+# Assignee: set the repository variable ALERT_ASSIGNEE (Settings -> Secrets and
+# variables -> Actions -> Variables) to a GitHub username. Falls back to the
+# repository owner, which is right for a personal fork and wrong for an org.
+name: alert
+on:
+  workflow_run:
+    workflows: [pipeline]
+    types: [completed]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LABEL: pipeline-failure
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      ASSIGNEE: ${{ vars.ALERT_ASSIGNEE || github.repository_owner }}
+    steps:
+      - name: Open, update, or close the alert issue
+        run: |
+          set -euo pipefail
+
+          # `cancelled` and `skipped` are someone's deliberate choice, not a fault.
+          case "$CONCLUSION" in
+            success)            state=ok ;;
+            failure|timed_out)  state=broken ;;
+            *) echo "conclusion '$CONCLUSION' needs no alert"; exit 0 ;;
+          esac
+
+          gh label create "$LABEL" --color B60205 \
+            --description "An unattended ARGUS sweep failed" 2>/dev/null || true
+
+          existing=$(gh issue list --label "$LABEL" --state open --limit 1 \
+                       --json number --jq '.[0].number // empty')
+
+          if [ "$state" = ok ]; then
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body \
+                "Recovered: sweep [#${RUN_NUMBER}](${RUN_URL}) succeeded. Closing."
+              gh issue close "$existing"
+              echo "closed #$existing"
+            else
+              echo "healthy, nothing open"
+            fi
+            exit 0
+          fi
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body \
+              "Still failing — sweep [#${RUN_NUMBER}](${RUN_URL}) (\`${CONCLUSION}\`) on \`${BRANCH}\`."
+            echo "commented on #$existing"
+            exit 0
+          fi
+
+          cat > body.md <<EOF
+          The scheduled ARGUS sweep failed and nobody was watching, so here's an issue.
+
+          | | |
+          |---|---|
+          | Run | [#${RUN_NUMBER}](${RUN_URL}) |
+          | Conclusion | \`${CONCLUSION}\` |
+          | Branch | \`${BRANCH}\` |
+
+          **This closes itself** when the next sweep succeeds, and collects
+          repeat failures as comments rather than opening more issues.
+
+          ### Worth checking, in order
+
+          1. **Is it infrastructure?** \`The job was not acquired by Runner of type
+             hosted\` or a timeout usually means GitHub, not ARGUS. Re-run it; if it
+             passes, ignore this.
+          2. **Did a source break?** The run log prints per-source counts. A single
+             dead feed logs and is skipped rather than failing the run, so if the
+             whole run died it is something broader.
+          3. **Did scoring degrade?** Look for the scoring line — a missing or
+             expired API key falls back to keyword scoring rather than failing, so
+             this alone will not fail a run, but it explains sudden score changes.
+          4. **Did the commit step fail?** The final push rebases and retries three
+             times; exhausting that means the branch moved underneath it repeatedly.
+
+          No data is lost while this is open — the database is committed, just not
+          updated. Collection resumes on the next successful sweep, and collectors
+          look back \`window_days\`, so a missed sweep is picked up.
+          EOF
+
+          # A bad assignee (e.g. the default owner is an org) must not fail the alert.
+          gh issue create \
+            --title "Pipeline failing — sweep #${RUN_NUMBER} (\`${CONCLUSION}\`)" \
+            --label "$LABEL" \
+            --body-file body.md \
+            --assignee "$ASSIGNEE" \
+          || gh issue create \
+            --title "Pipeline failing — sweep #${RUN_NUMBER} (\`${CONCLUSION}\`)" \
+            --label "$LABEL" \
+            --body-file body.md

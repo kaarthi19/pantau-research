@@ -1,0 +1,48 @@
+name: Feature or provider request
+description: Suggest a capability, a new scoring provider, or a new collector
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth checking first: adding a scoring provider that speaks the OpenAI
+        `/chat/completions` shape needs **no code** — set `base_url` and
+        `api_key_env` in `config.yaml` and it works today. A request here is for
+        adding it to the built-in preset table so nobody else has to.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The research workflow behind the request, not just the feature.
+    validations: {required: true}
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations: {required: false}
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - A new scoring provider
+        - A new collector or source type
+        - Dashboard or digest change
+        - Workflow or automation
+        - Something else
+    validations: {required: true}
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Fits the project's constraints
+      description: >-
+        ARGUS runs free on GitHub Actions and works with no API key at all.
+        Proposals that hold to that are much easier to accept.
+      options:
+        - label: Still works when no API key is present (degrades, doesn't fail)
+        - label: Needs no new Python dependency, or clearly justifies one
+        - label: A failure here stays contained and doesn't kill the run
