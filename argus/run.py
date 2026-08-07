@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 
 import yaml
 
-from . import store, filter as flt, render as render_mod, digest as digest_mod
+from . import store, filter as flt, render as render_mod, digest as digest_mod, context
 from .net import PoliteSession, CONTACT_EMAIL
-from .collectors import openalex, arxiv, gnews, rss, library
+from .collectors import openalex, arxiv, gnews, rss, library, crossref
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -83,6 +83,16 @@ def collect_all(sources: dict, cfg: dict, window_days: int, conn=None) -> tuple[
         guarded("library", lambda: library.collect(sess, lib_cfg, CONTACT_EMAIL))
         if conn is not None:
             store.set_meta(conn, "last_library_run", store.now_iso())
+
+    # Journal metadata often arrives with no abstract, which would leave a
+    # peer-reviewed paper judged on its title against a preprint's full text.
+    xr = cfg.get("crossref_backfill", {})
+    if xr.get("enabled", True):
+        got = crossref.backfill(sess, items, CONTACT_EMAIL, int(xr.get("limit", 60)))
+        if got["tried"]:
+            note = (f"{got['filled']}/{got['tried']} abstracts recovered"
+                    + (" — publisher deposits none, stopping" if got["gave_up"] else ""))
+            records.append(("crossref", got["filled"], True, note))
     return items, records
 
 
@@ -107,13 +117,15 @@ def score(conn, cfg: dict, kw: dict, mode: str, spec: dict) -> dict:
     passing.sort(key=lambda x: x.get("published_at") or x.get("fetched_at") or "", reverse=True)
     cap = cfg["scoring"].get("max_llm_items_per_run", 150)
     to_score = passing[:cap] if mode == "llm" else passing
+    venue_cfg = cfg["scoring"].get("venue_weight", {})
 
     if mode == "llm":
         prompt = _read(os.path.join(ROOT, cfg["prompt"]))
+        prompt += context.load(ROOT, cfg.get("context"))
         results = flt.llm_score(to_score, spec, prompt,
-                                cfg["scoring"].get("batch_size", 20), tags)
+                                cfg["scoring"].get("batch_size", 20), tags, venue_cfg)
     else:
-        results = [flt.keyword_score(it, kw, tags) for it in to_score]
+        results = [flt.keyword_score(it, kw, tags, venue_cfg) for it in to_score]
 
     for res in results:
         store.apply_score(conn, res["id"], res["score"], res["tag"],
@@ -142,6 +154,8 @@ def run_pipeline(args) -> int:
     mode, spec, note = flt.scoring_plan(cfg.get("scoring", {}))
     stage = args.stage
     summary: list[str] = [f"scoring: {mode} — {note}"]
+    if mode == "llm":
+        summary.append(f"context: {context.describe(ROOT, cfg.get('context'))}")
 
     if stage in ("all", "collect"):
         items, records = collect_all(sources, cfg, window_days, conn=conn)

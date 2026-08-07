@@ -9,6 +9,38 @@ publish a tag that disagrees with it.
 
 ## [Unreleased]
 
+### Added
+
+- **`context/` — reference documents that steer scoring.** Drop a concept note,
+  proposal, chapter outline or reading list in and its text is appended to the
+  scoring prompt, so items are judged against the actual project rather than a
+  keyword list. Plain text only; the block is bounded by `context.max_chars`,
+  the folder's own README is skipped, and each run reports what it loaded. LLM
+  scoring only — the keyword scorer doesn't read it.
+- **`scoring.venue_weight` — peer-reviewed work is no longer handicapped.**
+  OpenAlex carries no abstract for 60–82% of recent articles from the large
+  commercial publishers while arXiv always has one, so a journal paper was
+  scored on its title against a preprint's full abstract. arXiv was 57% of
+  everything above threshold here. The weight nudges by venue, with an extra
+  offset when a peer-reviewed paper's abstract is missing. On this repo's data,
+  arXiv 54% → 33% of items shown and journal papers 34 → 127. Set both weights
+  to 0 to rank purely on content.
+- **`crossref_backfill`** — recovers abstracts OpenAlex lacks, by DOI, free and
+  keyless. Self-limiting: gives up after 10 consecutive misses, because Elsevier
+  deposits no abstracts and an unbounded backfill would spend a round-trip per
+  item forever. Does work for MDPI, Springer, Wiley, IEEE, Taylor & Francis.
+- `venue` and `is_preprint` columns, with a migration — `CREATE TABLE IF NOT
+  EXISTS` is a no-op on the committed database, which is carried across
+  upgrades rather than rebuilt.
+
+### Changed
+
+- The dashboard shows the journal name (`Energy Policy`) instead of the raw
+  source key (`openalex:issn:0301-4215`), and marks preprints as such.
+- LLM scoring now receives each item's venue, whether it's peer-reviewed, and an
+  explicit note when no abstract was available — so a bare title reads as a
+  metadata gap rather than a thin paper.
+
 ## [1.1.0] — 2026-08-06
 
 First release under the ARGUS name, and the first intended for use outside a

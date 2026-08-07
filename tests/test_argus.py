@@ -1,13 +1,14 @@
 """Offline tests for ARGUS: normalization, dedupe, prefilter gating, keyword scoring,
 dashboard render, digest guard. No live HTTP, no ANTHROPIC_API_KEY."""
 import os
+import sqlite3
 import sys
 from datetime import datetime, timezone, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from argus import store, filter as flt, render, digest, providers
+from argus import store, filter as flt, render, digest, providers, context
 from argus.net import normalize_url
 from argus.collectors import library
 from argus.collectors.library import parse_dois
@@ -148,6 +149,120 @@ def test_llm_score_survives_provider_failure(monkeypatch):
     out = flt.llm_score([{"id": "a", "title": "t", "summary": ""}],
                         {"provider": "groq", "model": "m"}, "prompt", 20, ["methods"])
     assert out == []  # unscored items simply retry next run
+
+
+VENUE = {"enabled": True, "peer_reviewed": 1, "preprint": -1, "no_abstract_offset": 1}
+
+
+def test_venue_weighting_corrects_the_preprint_advantage():
+    """A journal paper with no abstract is scored on its title alone, so it gets
+    the offset back; a preprint with a full abstract does not."""
+    journal_no_abs = {"is_preprint": 0, "summary": ""}
+    journal_with_abs = {"is_preprint": 0, "summary": "a real abstract"}
+    preprint = {"is_preprint": 1, "summary": "a real abstract"}
+
+    assert flt.venue_adjust(journal_no_abs, VENUE)[0] == 2   # 1 + 1 offset
+    assert flt.venue_adjust(journal_with_abs, VENUE)[0] == 1
+    assert flt.venue_adjust(preprint, VENUE)[0] == -1
+    # unknown provenance is never guessed at
+    assert flt.venue_adjust({"is_preprint": None}, VENUE) == (0, "")
+    # and it can be turned off entirely
+    assert flt.venue_adjust(journal_no_abs, {"enabled": False}) == (0, "")
+
+
+def test_venue_weighting_flips_ranking_of_equal_content():
+    """The whole point: identical keyword relevance, journal should now win."""
+    kw = {"topic": ["grid"], "tags": {"methods": ["milp"]}, "region": [], "exclude": []}
+    body = {"title": "MILP for the grid", "summary": ""}
+    pre = flt.keyword_score({**body, "id": "a", "is_preprint": 1}, kw, ["methods"], VENUE)
+    jrn = flt.keyword_score({**body, "id": "b", "is_preprint": 0}, kw, ["methods"], VENUE)
+    assert jrn["score"] > pre["score"]
+    assert "peer-reviewed" in jrn["rationale"] and "no abstract" in jrn["rationale"]
+    # scores stay inside the 0-10 scale
+    top = flt.keyword_score({"id": "c", "title": "MILP grid", "summary": "", "is_preprint": 0},
+                            {"topic": ["milp", "grid"], "tags": {"methods": ["milp", "grid"]},
+                             "region": [], "exclude": []}, ["methods"], VENUE)
+    assert 0 <= top["score"] <= 10
+
+
+def test_context_documents_load_and_skip_the_readme(tmp_path):
+    d = tmp_path / "context"
+    d.mkdir()
+    (d / "README.md").write_text("Folder instructions, must not reach the scorer.", encoding="utf-8")
+    (d / "01-concept.md").write_text("My thesis is about inter-island interconnection.", encoding="utf-8")
+    (d / "notes.txt").write_text("Also: captive coal in nickel smelters.", encoding="utf-8")
+    (d / "paper.pdf").write_bytes(b"%PDF-1.4 binary")
+
+    block = context.load(str(tmp_path), {"enabled": True, "dir": "context"})
+    assert "inter-island interconnection" in block
+    assert "captive coal" in block
+    assert "Folder instructions" not in block   # README is the folder's docs
+    assert "%PDF" not in block                  # binary never reaches the prompt
+    assert "2 reference documents" in context.describe(str(tmp_path), {"dir": "context"})
+
+
+def test_context_is_bounded_and_optional(tmp_path):
+    d = tmp_path / "context"
+    d.mkdir()
+    (d / "big.md").write_text("x" * 50_000, encoding="utf-8")
+    block = context.load(str(tmp_path), {"dir": "context", "max_chars": 500})
+    assert len(block) < 1200 and "[truncated]" in block
+    assert context.load(str(tmp_path), {"enabled": False, "dir": "context"}) == ""
+    assert context.load(str(tmp_path), {"dir": "does-not-exist"}) == ""
+
+
+def test_migration_adds_columns_to_a_pre_existing_database(tmp_path):
+    """The committed db is carried across upgrades, never rebuilt, so new
+    columns have to be added to a live file."""
+    db = str(tmp_path / "old.db")
+    old = sqlite3.connect(db)
+    old.executescript("""CREATE TABLE items (id TEXT PRIMARY KEY, source TEXT, source_type TEXT,
+        title TEXT, url TEXT, doi TEXT, published_at TEXT, fetched_at TEXT, summary TEXT,
+        prefilter_hits INTEGER, score INTEGER, tag TEXT, rationale TEXT, scored_at TEXT, scorer TEXT);
+        INSERT INTO items(id, title) VALUES('keep-me', 'existing row');""")
+    old.commit(); old.close()
+
+    conn = store.connect(db)   # connect() migrates
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(items)").fetchall()}
+    assert {"venue", "is_preprint"} <= cols
+    assert conn.execute("SELECT title FROM items WHERE id='keep-me'").fetchone()[0] == "existing row"
+    assert store.migrate(conn) == []           # idempotent
+    store.upsert_items(conn, [{"title": "new", "url": "https://x/9",
+                               "venue": "Energy Policy", "is_preprint": 0}])
+    row = conn.execute("SELECT venue, is_preprint FROM items WHERE url='https://x/9'").fetchone()
+    assert row["venue"] == "Energy Policy" and row["is_preprint"] == 0
+
+
+def test_crossref_gives_up_when_the_publisher_deposits_nothing(monkeypatch):
+    """Elsevier deposits no abstracts, so an unbounded backfill would spend a
+    round-trip per item forever."""
+    from argus.collectors import crossref
+    calls = []
+    monkeypatch.setattr(crossref, "fetch_abstract",
+                        lambda s, doi, m: calls.append(doi) or "")
+    items = [{"source_type": "paper", "doi": f"10.1016/{i}", "summary": ""} for i in range(50)]
+    out = crossref.backfill(None, items, "x@y", limit=60)
+    assert out["gave_up"] and out["filled"] == 0
+    assert len(calls) == crossref.GIVE_UP_AFTER   # stopped, didn't grind through 50
+
+
+def test_crossref_fills_when_the_publisher_does_deposit(monkeypatch):
+    from argus.collectors import crossref
+    monkeypatch.setattr(crossref, "fetch_abstract", lambda s, doi, m: "recovered abstract")
+    items = [{"source_type": "paper", "doi": "10.3390/a", "summary": ""},
+             {"source_type": "paper", "doi": "10.3390/b", "summary": "already here"},
+             {"source_type": "news", "doi": "10.3390/c", "summary": ""}]
+    out = crossref.backfill(None, items, "x@y")
+    assert out["filled"] == 1
+    assert items[0]["summary"] == "recovered abstract"
+    assert items[1]["summary"] == "already here"   # never overwrites
+    assert items[2]["summary"] == ""               # papers only
+
+
+def test_crossref_strips_jats_markup():
+    from argus.collectors import crossref
+    raw = "<jats:title>Abstract</jats:title><jats:p>We model <jats:italic>grid</jats:italic> flows.</jats:p>"
+    assert crossref._clean(raw) == "We model grid flows."
 
 
 def test_parse_dois_cleans_and_dedupes(tmp_path):

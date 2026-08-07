@@ -51,6 +51,8 @@ def collect(session, categories: list[str], terms: list[str],
         items.append({
             "source": "arxiv",
             "source_type": "paper",
+            "venue": "arXiv",
+            "is_preprint": 1,
             "title": (e.get("title") or "").replace("\n", " ").strip(),
             "url": e.get("link", ""),
             "doi": doi or None,
