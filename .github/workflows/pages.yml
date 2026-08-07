@@ -1,17 +1,27 @@
-# Publishes docs/ to GitHub Pages after every sweep.
+# Publishes docs/ to GitHub Pages.
 #
-# Fork-friendly by design: the preflight step turns Pages ON for you the first
-# time it runs, so a fork needs no Settings clicks. If Pages isn't available
-# (a private repo on the Free plan), the job says so and exits green rather
-# than painting the whole repo red.
+# Called directly by the pipeline (`uses: ./.github/workflows/pages.yml`) rather
+# than chained off it with `workflow_run`.
+#
+# `push:` can never see the sweep's own commit: GitHub does not trigger
+# workflows from a push made with GITHUB_TOKEN, which is what the pipeline
+# pushes with. `workflow_run` does work, but it went dead for several minutes
+# after this workflow was first added to the default branch — new listeners take
+# a while to register, and a sweep in that window publishes nothing with no
+# indication why. A direct call is deterministic from the first run.
+#
+# Pages must be enabled once per repository (Settings -> Pages -> Source: GitHub
+# Actions). The preflight below tries to do it for you, which works when a token
+# with admin rights is available, but GITHUB_TOKEN cannot create a Pages site
+# even with `pages: write` — that permission covers deploying to an existing
+# site, not creating one. When it can't, the job explains and exits green rather
+# than painting the repo red.
 name: pages
 on:
-  workflow_run:
-    workflows: [pipeline]   # the sweep commits docs/ with [skip ci], so chain off it
-    types: [completed]
+  workflow_call: {}
   push:
     branches: [main]
-    paths: ['docs/**']      # covers hand edits to the dashboard
+    paths: ['docs/**']      # hand edits to the dashboard (a human push, so this fires)
   workflow_dispatch: {}
 concurrency: {group: pages, cancel-in-progress: true}
 permissions:
@@ -22,10 +32,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # workflow_run fires on completion of any kind — don't publish off a failed sweep.
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -36,20 +42,26 @@ jobs:
         run: |
           if gh api "repos/$GITHUB_REPOSITORY/pages" >/dev/null 2>&1; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
-          elif gh api --method POST "repos/$GITHUB_REPOSITORY/pages" \
-                 -f "build_type=workflow" >/dev/null 2>&1; then
+            exit 0
+          fi
+          # Try anyway — succeeds if a token with admin rights is in play. It
+          # won't be for the stock GITHUB_TOKEN, whose `pages: write` covers
+          # deploying to an existing site but not creating one.
+          err=$(gh api --method POST "repos/$GITHUB_REPOSITORY/pages" \
+                  -f "build_type=workflow" 2>&1) && {
             echo "::notice::Enabled GitHub Pages for $GITHUB_REPOSITORY."
             echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Pages unavailable for $GITHUB_REPOSITORY, dashboard not published. Pages needs a public repo, or a paid plan for private ones. The sweep itself succeeded — open docs/index.html locally until then."
-          fi
+            exit 0
+          }
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          echo "API said: $err"
+          echo "::warning::Dashboard not published — GitHub Pages is not enabled for $GITHUB_REPOSITORY. Enable it once: Settings -> Pages -> Source: GitHub Actions. Then re-run this workflow. (Pages needs a public repo, or a paid plan for private ones.) Everything else in the sweep succeeded; docs/index.html is committed and openable locally meanwhile."
 
       - uses: actions/checkout@v4
         if: steps.preflight.outputs.ready == 'true'
         with:
-          # workflow_run reports the SHA that triggered the *pipeline*, which is
-          # one commit behind the docs/ the pipeline just pushed. Take the branch tip.
+          # The sweep commits docs/ during the caller's earlier job, so take the
+          # branch tip rather than the SHA this run started from.
           ref: ${{ github.event.repository.default_branch }}
 
       - uses: actions/configure-pages@v5

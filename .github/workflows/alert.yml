@@ -13,9 +13,27 @@
 # repository owner, which is right for a personal fork and wrong for an org.
 name: alert
 on:
-  workflow_run:
-    workflows: [pipeline]
-    types: [completed]
+  # Called by the pipeline with the sweep's result. Preferred over `workflow_run`
+  # chaining: the call is deterministic from the very first run (a freshly added
+  # workflow_run listener takes minutes to register, and sweeps in that window
+  # alert nobody), and `needs.run.result` is the job's real outcome rather than
+  # a re-derived one.
+  workflow_call:
+    inputs:
+      conclusion:
+        description: 'How the sweep ended: success | failure | cancelled | skipped'
+        required: true
+        type: string
+  # Lets you rehearse the alert without waiting for a real outage. Alerting you
+  # cannot test is alerting you cannot trust.
+  workflow_dispatch:
+    inputs:
+      simulate:
+        description: 'Pretend the last sweep ended this way'
+        required: true
+        default: failure
+        type: choice
+        options: [failure, success]
 permissions:
   contents: read
   issues: write
@@ -25,11 +43,16 @@ jobs:
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
+      # This job never checks out the repo, so `gh` has no git remote to infer
+      # from and every call dies with "not a git repository". GH_REPO tells it.
+      GH_REPO: ${{ github.repository }}
       LABEL: pipeline-failure
-      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-      RUN_URL: ${{ github.event.workflow_run.html_url }}
-      RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
-      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      # `inputs` carries whichever trigger fired: conclusion (call) or simulate
+      # (manual rehearsal). Both resolve to the same script below.
+      CONCLUSION: ${{ inputs.conclusion || inputs.simulate }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      RUN_NUMBER: ${{ github.run_number }}
+      BRANCH: ${{ github.ref_name }}
       ASSIGNEE: ${{ vars.ALERT_ASSIGNEE || github.repository_owner }}
     steps:
       - name: Open, update, or close the alert issue

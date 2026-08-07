@@ -33,9 +33,11 @@ prints which scorer it actually used.
    few-shot examples for your work. This is the system prompt used for LLM scoring.
 4. **Pick a scorer** — see the table below. The free keyword scorer needs
    nothing; an LLM scorer needs one API key, and several are free.
-5. **Turn on Actions.** Forks start with workflows disabled: open the Actions
-   tab and enable them. The dashboard publishes itself from there — the `pages`
-   workflow switches GitHub Pages on for you on its first run.
+5. **Turn on Actions and Pages.** Two one-time switches in your fork:
+   - **Actions** tab → enable workflows (forks start with them disabled).
+   - **Settings → Pages → Source: GitHub Actions** — needed once before the
+     dashboard can publish. Skip it and everything still works; the sweep just
+     warns that it couldn't publish, and you read `docs/index.html` locally.
 
 ## Scoring: bring your own model
 
@@ -111,16 +113,24 @@ to widen the net.
 legend, a Top Picks band (≥ `highlight_threshold`, last 48h), and a reverse-chron
 list (≥ `show_threshold`), refreshing every 10 minutes.
 
-The `pages` workflow publishes it to
-`https://<you>.github.io/<repo>/` after every sweep, and **enables Pages on
-first run** so a fork needs no Settings clicks. Two caveats:
+Every sweep publishes it to `https://<you>.github.io/<repo>/`. Three things
+worth knowing:
 
+- **Enable Pages once per repo**: Settings → Pages → Source: **GitHub Actions**.
+  The workflow attempts this itself, but the token Actions runs with cannot
+  create a Pages site — `pages: write` covers *deploying* to an existing site,
+  not creating one. Until you flip it, the sweep still succeeds and warns that
+  it couldn't publish.
 - Pages on a **private** repo requires a paid GitHub plan. On a private free
-  repo the workflow logs a notice and skips — the sweep still succeeds, and you
-  can open `docs/index.html` locally.
+  repo the workflow skips with a warning rather than failing the run.
 - The dashboard URL is public once published. This repo carries research only —
   and library-seeded items are deliberately kept off the dashboard and confined
   to the private email digest, since they reveal your reading.
+
+Publishing is a `publish` job inside the pipeline, not a separate
+event-triggered workflow. That's deliberate: the sweep's own commit is made with
+`GITHUB_TOKEN`, and GitHub never triggers a workflow from such a push, so no
+`push:` trigger could ever see it.
 
 ## Email digest (optional)
 

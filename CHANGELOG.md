@@ -27,9 +27,12 @@ single machine.
   `registry/sources.yaml` keyword tags line up with the `config.yaml`
   workstreams, and proves the pipeline still runs with no API keys present.
 - **GitHub Pages deployment** (`.github/workflows/pages.yml`) — the dashboard
-  publishes automatically after each sweep. A fork needs no setup: the workflow
-  enables Pages on first run, and skips with an explanatory notice where Pages
-  isn't available instead of failing the run.
+  publishes automatically after each sweep, as a `publish` job the pipeline
+  calls directly. Enabling Pages remains a one-time manual step per repository
+  (Settings → Pages → Source: GitHub Actions): the workflow attempts it, but
+  `GITHUB_TOKEN` cannot create a Pages site even with `pages: write`, which
+  covers deploying to an existing site rather than creating one. Where Pages
+  isn't available the job warns and exits green instead of failing the run.
 - **Releases** (`.github/workflows/release.yml`) — pushing a `v*` tag verifies
   the tag against `argus.__version__`, runs the tests, and publishes a GitHub
   Release using this file's matching section as the notes.
@@ -50,7 +53,8 @@ single machine.
   tracker, so reports have to go upstream. It also draws the line between
   personal config (topics, journals, thresholds, prompt — stays in your fork)
   and changes to how ARGUS works (upstream).
-- **Failure alerting** (`.github/workflows/alert.yml`) — a failed sweep opens a
+- **Failure alerting** (`.github/workflows/alert.yml`), called by the pipeline
+  as an `always()` job — a failed sweep opens a
   GitHub issue with the run link and a triage checklist, instead of failing
   silently until someone thinks to check the Actions tab. It keeps one issue
   open (repeat failures are comments, not new issues) and closes it

@@ -8,7 +8,11 @@ on:
   schedule: [{cron: "17 */8 * * *"}]
   workflow_dispatch: {}
 concurrency: {group: pipeline, cancel-in-progress: false}
-permissions: {contents: write}
+permissions:
+  contents: write   # commit the db + dashboard
+  pages: write      # publish the dashboard
+  id-token: write   # required by actions/deploy-pages
+  issues: write     # open a failure alert
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -41,11 +45,46 @@ jobs:
           git add data/argus.db docs/
           git diff --cached --quiet && { echo "no changes to commit"; exit 0; }
           git commit -m "pipeline run [skip ci]"
-          # A manual dispatch racing the cron leaves the remote ahead. Rebase and
-          # retry rather than losing a run whose data is already collected.
+
+          # A manual dispatch racing the cron leaves the remote ahead. Replay our
+          # state on top rather than merging: the database and dashboard are
+          # regenerated artifacts, never hand-edited, so "latest sweep wins" is
+          # the only sensible resolution. `git pull --rebase` deadlocks here —
+          # it tries a content merge and conflicts on the binary db every time.
           for attempt in 1 2 3; do
             git push && exit 0
-            echo "push rejected (attempt $attempt) — rebasing onto origin/$GITHUB_REF_NAME"
-            git pull --rebase --autostash origin "$GITHUB_REF_NAME" || exit 1
+            echo "push rejected (attempt $attempt) — replaying onto origin/$GITHUB_REF_NAME"
+            git fetch origin "$GITHUB_REF_NAME" || exit 1
+            # --soft moves the branch pointer but keeps our freshly generated
+            # files staged, so the re-commit carries this sweep's results.
+            git reset --soft "origin/$GITHUB_REF_NAME" || exit 1
+            git add data/argus.db docs/
+            git diff --cached --quiet && { echo "remote already has this state"; exit 0; }
+            git commit -m "pipeline run [skip ci]"
           done
+          echo "::error::Could not push sweep results after 3 attempts."
           exit 1
+
+  # Published from here rather than by a separate event-triggered workflow.
+  # `push:` can never see the sweep's commit (GitHub does not trigger workflows
+  # from a GITHUB_TOKEN push), and a newly added `workflow_run` listener takes
+  # minutes to start firing — sweeps in that window publish nothing, silently.
+  # A direct call is deterministic from the first run.
+  # Default branch only: GitHub's `github-pages` environment restricts
+  # deployments to it, so dispatching this pipeline from a feature branch to
+  # test would otherwise fail here and paint an otherwise-good run red.
+  publish:
+    needs: run
+    if: >-
+      needs.run.result == 'success' &&
+      github.ref_name == github.event.repository.default_branch
+    uses: ./.github/workflows/pages.yml
+    permissions: {contents: read, pages: write, id-token: write}
+
+  # `always()` so a failed sweep still alerts — that is the entire point.
+  alert:
+    needs: run
+    if: always()
+    uses: ./.github/workflows/alert.yml
+    with: {conclusion: "${{ needs.run.result }}"}
+    permissions: {contents: read, issues: write}
