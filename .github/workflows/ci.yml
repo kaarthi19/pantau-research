@@ -3,7 +3,11 @@ on:
   push:
     branches: [main]
     paths-ignore: ['docs/**', 'data/**']   # the bot's own state commits aren't code
-  pull_request: {}
+  # Spelled out rather than `pull_request: {}`. An empty mapping is not the same
+  # as an omitted one, and in this repo the `{}` form produced no runs at all.
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
   workflow_dispatch: {}
 concurrency:
   group: ci-${{ github.ref }}
