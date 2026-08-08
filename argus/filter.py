@@ -32,7 +32,7 @@ def prefilter(item: dict, kw: dict) -> tuple[bool, int]:
     return n >= 1, n
 
 
-def keyword_score(item: dict, kw: dict, tags: list[str]) -> dict:
+def keyword_score(item: dict, kw: dict, tags: list[str], venue_cfg: dict | None = None) -> dict:
     text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
     if _hits(text, kw.get("exclude", [])) > 0:
         return _result(item, 0, "none", "excluded topic", "keyword", tags)
@@ -47,6 +47,11 @@ def keyword_score(item: dict, kw: dict, tags: list[str]) -> dict:
     score = min(10, best * 3 + topic + region)
     tag = best_tag if best > 0 else "none"
     why = f"keyword match: {best} tag / {topic} topic / {region} region hits"
+
+    delta, vwhy = venue_adjust(item, venue_cfg or {})
+    if delta:
+        score = max(0, min(10, score + delta))
+        why = f"{why} [{vwhy}]"
     return _result(item, score, tag, why, "keyword", tags)
 
 
@@ -58,6 +63,33 @@ def _result(item, score, tag, why, scorer, tags) -> dict:
         "rationale": why,
         "scorer": scorer,
     }
+
+
+def venue_adjust(item: dict, cfg: dict) -> tuple[int, str]:
+    """Score nudge for where a paper appeared. Returns (delta, reason).
+
+    This exists to correct a measurable bias, not to express a taste. OpenAlex
+    carries no abstract for 60-82% of recent articles from the big commercial
+    publishers, while arXiv always has one — so a peer-reviewed paper is scored
+    on its title while a preprint is scored on a full abstract, and loses on
+    information rather than merit. Before this, arXiv supplied 57% of everything
+    above threshold. Set both weights to 0 to rank purely on content.
+    """
+    if not cfg or not cfg.get("enabled", True):
+        return 0, ""
+    pre = item.get("is_preprint")
+    if pre is None:
+        return 0, ""
+    if int(pre) == 1:
+        d = int(cfg.get("preprint", 0))
+        return d, (f"preprint {d:+d}" if d else "")
+    d = int(cfg.get("peer_reviewed", 0))
+    # A title-only peer-reviewed paper is the case this is really for: it had no
+    # abstract to be judged on, so give back what the missing text cost it.
+    if d and not (item.get("summary") or "").strip():
+        d += int(cfg.get("no_abstract_offset", 0))
+        return d, f"peer-reviewed, no abstract available {d:+d}"
+    return d, (f"peer-reviewed {d:+d}" if d else "")
 
 
 def _clamp(raw: dict, tags: list[str], scorer: str) -> dict:
@@ -78,17 +110,29 @@ def _clamp(raw: dict, tags: list[str], scorer: str) -> dict:
 
 
 def _payload(items: list[dict]) -> str:
-    slim = [{"id": it["id"], "title": it.get("title", ""),
-             "summary": (it.get("summary") or "")[:1000]} for it in items]
+    slim = []
+    for it in items:
+        row = {"id": it["id"], "title": it.get("title", ""),
+               "summary": (it.get("summary") or "")[:1000]}
+        if it.get("venue"):
+            row["venue"] = it["venue"]
+        if it.get("is_preprint") is not None:
+            row["peer_reviewed"] = not int(it["is_preprint"])
+        # Say so explicitly: otherwise the model reads a bare title as a thin
+        # paper rather than as a paper whose abstract the metadata lacks.
+        if not (it.get("summary") or "").strip():
+            row["note"] = "no abstract available from the source; judge on title and venue"
+        slim.append(row)
     return json.dumps(slim, ensure_ascii=False)
 
 
 def llm_score(items: list[dict], spec: dict, system_prompt: str,
-              batch_size: int, tags: list[str]) -> list[dict]:
+              batch_size: int, tags: list[str], venue_cfg: dict | None = None) -> list[dict]:
     """Score items in batches through whichever provider `spec` names. A batch
     that fails (network, quota, unparseable JSON) is skipped, not fatal — those
     items stay unscored and are retried on the next run."""
     scorer = spec["provider"]
+    by_item = {it["id"]: it for it in items}
     results: list[dict] = []
     for start in range(0, len(items), batch_size):
         batch = items[start:start + batch_size]
@@ -103,8 +147,18 @@ def llm_score(items: list[dict], spec: dict, system_prompt: str,
             continue
         for raw in parsed:
             if isinstance(raw, dict) and raw.get("id") in by_id:
-                results.append(_clamp(raw, tags, scorer))
+                res = _clamp(raw, tags, scorer)
+                results.append(_apply_venue(res, by_item.get(res["id"], {}), venue_cfg))
     return results
+
+
+def _apply_venue(res: dict, item: dict, venue_cfg: dict | None) -> dict:
+    delta, why = venue_adjust(item, venue_cfg or {})
+    if not delta:
+        return res
+    res["score"] = max(0, min(10, res["score"] + delta))
+    res["rationale"] = f"{res['rationale']} [{why}]"[:280]
+    return res
 
 
 def _call(spec, system_prompt, user) -> list[dict] | None:

@@ -32,7 +32,44 @@ scoring:
   batch_size: 20
   max_llm_items_per_run: 150
 
+  # Peer-reviewed work is structurally handicapped and this corrects for it.
+  # OpenAlex carries no abstract for 60-82% of recent articles from the large
+  # commercial publishers (Elsevier deposits none to Crossref either), while
+  # arXiv always has one — so a journal paper gets judged on its title while a
+  # preprint gets judged on a full abstract. Measured here before this existed:
+  # arXiv was 57% of everything above threshold.
+  # Set both to 0 to rank purely on content, or raise `preprint` above 0 if you
+  # would rather see preprints first.
+  venue_weight:
+    enabled: true
+    peer_reviewed: 1        # published in a journal
+    preprint: -1            # arXiv and other repositories
+    no_abstract_offset: 1   # extra for a journal paper whose abstract is missing,
+                            # since it was scored on a title alone
+
+# Journal metadata frequently omits abstracts; try to recover them by DOI from
+# Crossref. Free, no key. Gives up automatically after 10 consecutive misses —
+# Elsevier deposits no abstracts, so for an Elsevier-heavy watchlist this costs
+# ~10 requests once per run and then stops. Worth leaving on: it does work for
+# MDPI, Springer, Wiley, IEEE and Taylor & Francis.
+crossref_backfill:
+  enabled: true
+  limit: 60
+
 prompt: prompts/research.md
+
+# Reference documents. Drop a concept note, proposal, chapter outline or reading
+# list into context/ and its text is appended to the scoring prompt, so items
+# are judged against your actual project rather than a keyword list. Usually the
+# highest-leverage tuning available — a two-page concept note says more about
+# what you care about than any number of query strings.
+# Plain text only (.md, .txt, .rst) and LLM scoring only; the keyword scorer
+# does not read them.
+context:
+  enabled: true
+  dir: context
+  max_chars: 24000      # whole block is truncated here, so a big drop can't
+                        # blow the context window or the bill
 
 # Relevance floors, on the scorer's 0-10 scale. Nothing below `show_threshold`
 # is ever displayed — an empty dashboard is a valid, expected outcome, not a

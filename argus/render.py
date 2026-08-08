@@ -50,9 +50,15 @@ def build_context(conn, cfg: dict) -> dict:
     def shape(r):
         tag = _get(r, "tag", "none")
         meta = tags.get(tag, {"label": tag, "color": "#888888"})
+        # Prefer the journal's name over the raw source key: "Energy Policy"
+        # reads, "openalex:issn:0301-4215" doesn't.
+        venue = (_get(r, "venue") or "").strip()
+        label = venue or _get(r, "source", "")
+        if _get(r, "is_preprint") == 1 and "arxiv" not in label.lower():
+            label = f"{label} (preprint)"
         return {
             "title": _get(r, "title", ""), "url": _get(r, "url", ""),
-            "source": _get(r, "source", ""), "score": _get(r, "score", 0),
+            "source": label, "score": _get(r, "score", 0),
             "rationale": _get(r, "rationale", ""),
             "date": _get(r, "published_at") or _get(r, "fetched_at", ""),
             "tag_label": meta["label"], "tag_color": meta["color"],

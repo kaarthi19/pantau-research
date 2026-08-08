@@ -33,6 +33,7 @@ def _work_to_item(work: dict, source_name: str) -> dict:
     if doi.startswith("https://doi.org/"):
         doi = doi[len("https://doi.org/"):]
     loc = (work.get("primary_location") or {})
+    src = (loc.get("source") or {})
     landing = loc.get("landing_page_url") or work.get("id") or ""
     return {
         "source": source_name,
@@ -42,7 +43,19 @@ def _work_to_item(work: dict, source_name: str) -> dict:
         "doi": doi or None,
         "published_at": work.get("publication_date") or "",
         "summary": _reconstruct_abstract(work.get("abstract_inverted_index")),
+        "venue": src.get("display_name") or "",
+        "is_preprint": _is_preprint(work, src),
     }
+
+
+def _is_preprint(work: dict, src: dict) -> int:
+    """OpenAlex marks preprints two ways and neither alone is reliable: the work
+    type, and whether the hosting source is a repository rather than a journal."""
+    if work.get("type") == "preprint":
+        return 1
+    if (src.get("type") or "").lower() == "repository":
+        return 1
+    return 0
 
 
 def _query(session, filter_clause: str, mailto: str) -> list[dict]:

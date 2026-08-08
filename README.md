@@ -86,6 +86,52 @@ failing the run:
 scoring: keyword — groq needs $GROQ_API_KEY — falling back to keyword scoring
 ```
 
+## Tell it what you're working on (`context/`)
+
+Drop a concept note, proposal, chapter outline or reading list into `context/`
+and its text is appended to the scoring prompt, so items are judged against your
+actual project rather than a keyword list.
+
+This is usually the highest-leverage tuning available. `registry/sources.yaml`
+decides what gets **collected**; `context/` decides what counts as **relevant**
+— and a two-page concept note says more about that than any number of query
+strings. Plain text only (`.md`, `.txt`, `.rst`); the block is truncated at
+`context.max_chars`. Each run reports what it loaded:
+
+```
+context: 2 reference documents, 8431 chars
+```
+
+**LLM scoring only** — the free keyword scorer matches term lists and doesn't
+read these. Everything here is committed, so keep unpublished results and
+anything under embargo out of it. See [context/README.md](context/README.md).
+
+## Journals vs. preprints
+
+Left alone, preprints dominate — and not on merit. OpenAlex carries **no
+abstract for 60–82% of recent articles** from the large commercial publishers
+(Elsevier deposits none to Crossref either), while arXiv always has one. So a
+peer-reviewed paper gets scored on its title while a preprint gets scored on a
+full abstract. Measured on this repo before the fix, arXiv was **57% of
+everything above threshold**.
+
+Two corrections, both configurable:
+
+- `crossref_backfill` recovers missing abstracts by DOI. Free, no key. It gives
+  up automatically after 10 consecutive misses, so for an Elsevier-heavy
+  watchlist it costs ~10 requests a run and then stops — but it genuinely works
+  for MDPI, Springer, Wiley, IEEE and Taylor & Francis.
+- `scoring.venue_weight` nudges the score by where the work appeared, with an
+  extra offset for a journal paper whose abstract is missing, since it was
+  judged on a title alone.
+
+On this repo's data that moved arXiv from 54% to 33% of what's shown, and
+journal papers from 34 to 127. It also raises total volume — raise
+`show_threshold` if you want the same amount with better composition.
+
+Set both weights to `0` to rank purely on content, or make `preprint` positive
+if you'd rather see preprints first.
+
 ## Relevance floors — and why an empty day is fine
 
 Every item gets a 0–10 relevance score, and three parameters in `config.yaml`

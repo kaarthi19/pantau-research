@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS items (
   summary        TEXT,
   prefilter_hits INTEGER,
   score          INTEGER, tag TEXT, rationale TEXT,
-  scored_at      TEXT, scorer TEXT
+  scored_at      TEXT, scorer TEXT,
+  venue          TEXT,      -- journal or repository name, for display and weighting
+  is_preprint    INTEGER    -- 1 preprint, 0 peer-reviewed, NULL unknown
 );
 CREATE TABLE IF NOT EXISTS runs (
   run_at TEXT, source TEXT, fetched INTEGER, new INTEGER, ok INTEGER, note TEXT
@@ -36,7 +38,15 @@ CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at);
 _COLUMNS = (
     "id", "source", "source_type", "title", "url", "doi", "published_at",
     "fetched_at", "summary", "prefilter_hits", "score", "tag", "rationale",
-    "scored_at", "scorer",
+    "scored_at", "scorer", "venue", "is_preprint",
+)
+
+# Columns added after 1.1.0. `CREATE TABLE IF NOT EXISTS` is a no-op on an
+# existing database, so a committed db from an earlier version needs these
+# added explicitly — the file is carried forward across upgrades, never rebuilt.
+_ADDED_COLUMNS = (
+    ("venue", "TEXT"),
+    ("is_preprint", "INTEGER"),
 )
 
 
@@ -48,8 +58,23 @@ def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    migrate(conn)
     conn.commit()
     return conn
+
+
+def migrate(conn) -> list[str]:
+    """Add columns introduced after a database was first created. Returns the
+    names added, so a run can report that it upgraded the file."""
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(items)").fetchall()}
+    added = []
+    for name, decl in _ADDED_COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE items ADD COLUMN {name} {decl}")
+            added.append(name)
+    if added:
+        conn.commit()
+    return added
 
 
 def compute_id(item: dict) -> str:
