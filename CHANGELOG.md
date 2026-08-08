@@ -9,6 +9,13 @@ publish a tag that disagrees with it.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-08-08
+
+Minor rather than patch: venue weighting changes how every item ranks, so a
+fork's dashboard visibly re-orders on upgrade. Nothing is lost — scores are
+write-once, so existing items keep their scores and only newly collected items
+are affected until you re-score.
+
 ### Added
 
 - **`context/` — reference documents that steer scoring.** Drop a concept note,
@@ -148,6 +155,7 @@ Initial internal version, under the name Pantau Research.
 - Opt-in Zotero library seeding — surfaces recent papers citing your library and
   new work by the authors you read most, via the read-only Zotero Web API.
 
-[Unreleased]: https://github.com/kaarthi19/pantau-research/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/kaarthi19/pantau-research/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/kaarthi19/pantau-research/releases/tag/v1.2.0
 [1.1.0]: https://github.com/kaarthi19/pantau-research/releases/tag/v1.1.0
 [1.0.0]: https://github.com/kaarthi19/pantau-research/releases/tag/v1.0.0
