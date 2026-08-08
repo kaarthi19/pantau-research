@@ -7,4 +7,4 @@ Fork it, point registry/sources.yaml at your field, and run it on GitHub
 Actions.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
