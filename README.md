@@ -260,8 +260,38 @@ committed** (git-ignored) and never leave the machine otherwise. Implementation:
 
 `registry/sources.yaml → openalex.issns` is your **target-journal watchlist** —
 every new paper in those journals (within `window_days`) is pulled and scored.
-Add or remove ISSNs to match your field (find a journal's ISSN on its homepage
-or at portal.issn.org).
+It's keyed by ISSN rather than name because names are ambiguous: *Applied
+Energy*, *ACS Applied Energy Materials* and *Advances in Applied Energy* are
+three different journals.
+
+You don't have to go looking them up. Ask by name and paste the answer in:
+
+```bash
+make journals Q="Nature Energy"
+```
+```
+  - "2058-7546"   # Nature Energy
+
+  - "0306-2619"   # Applied Energy
+    #   other matches: "2574-0962" ACS Applied Energy Materials (11,735 works)
+    #   other matches: "2666-7924" Advances in Applied Energy (286 works)
+```
+
+Near-name journals are listed too, so you don't silently watch the wrong one.
+
+With no argument it **audits the watchlist you already have**:
+
+```bash
+make journals
+```
+```
+  [ok]   0301-4215  Energy Policy                       17,401 works
+  [DEAD] 1234-5678  no journal with this ISSN — it will silently contribute nothing
+```
+
+That check is worth running after any edit. A wrong ISSN doesn't error — it
+just returns nothing, so a journal you believe you're watching quietly
+contributes zero papers forever.
 
 ## Releases
 

@@ -265,6 +265,55 @@ def test_crossref_strips_jats_markup():
     assert crossref._clean(raw) == "We model grid flows."
 
 
+class _FakeSourcesSession:
+    """OpenAlex /sources, stubbed. Returns near-name journals for the ambiguity
+    case and an empty list for the miss case."""
+    def __init__(self, payload): self._p = payload
+    def get(self, url, **kw): return _FakeResp({"results": self._p})
+
+
+def test_journal_lookup_reports_issn_and_near_name_alternatives(capsys):
+    from argus import journals
+    hits = journals.search(_FakeSourcesSession([
+        {"display_name": "Applied Energy", "issn_l": "0306-2619", "works_count": 28408},
+        {"display_name": "ACS Applied Energy Materials", "issn_l": "2574-0962", "works_count": 11735},
+    ]), "Applied Energy")
+    assert hits[0]["issn"] == "0306-2619"
+    assert hits[1]["name"].startswith("ACS")   # the trap is surfaced, not hidden
+
+
+def test_journal_lookup_survives_a_source_with_no_issn():
+    """OpenAlex has sources (repositories, some series) with issn_l null —
+    those must not be offered as a watchlist entry."""
+    from argus import journals
+    hits = journals.search(_FakeSourcesSession([
+        {"display_name": "Some Repository", "issn_l": None, "works_count": 5},
+    ]), "anything")
+    assert [h for h in hits if h["issn"]] == []
+
+
+def test_journal_cli_treats_an_empty_arg_as_audit(monkeypatch):
+    """`make journals` with no Q passes one empty string, because the recipe
+    must quote "$(Q)" to keep a multi-word title in one piece. That has to mean
+    audit, not a lookup of ""."""
+    from argus import journals
+    called = {}
+    monkeypatch.setattr(journals, "audit", lambda *a, **k: called.setdefault("audit", True) and 0)
+    monkeypatch.setattr(journals, "lookup", lambda names: called.setdefault("lookup", names) and 0)
+    journals.main([""])
+    assert "audit" in called and "lookup" not in called
+    called.clear()
+    journals.main(["Nature Energy"])
+    assert called.get("lookup") == ["Nature Energy"]   # kept whole, not split
+
+
+def test_journal_search_returns_empty_on_network_failure():
+    from argus import journals
+    class Boom:
+        def get(self, *a, **k): raise RuntimeError("network down")
+    assert journals.search(Boom(), "Energy Policy") == []
+
+
 def test_parse_dois_cleans_and_dedupes(tmp_path):
     bib = tmp_path / "lib.bib"
     bib.write_text(

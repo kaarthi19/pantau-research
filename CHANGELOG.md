@@ -9,6 +9,17 @@ publish a tag that disagrees with it.
 
 ## [Unreleased]
 
+### Added
+
+- **`make journals` — find a journal's ISSN by name, and audit the ones you
+  already watch.** The watchlist is keyed by ISSN because names are ambiguous
+  (*Applied Energy*, *ACS Applied Energy Materials* and *Advances in Applied
+  Energy* are three journals), but looking them up by hand was the most tedious
+  step in pointing ARGUS at a new field. `make journals Q="Nature Energy"`
+  prints a paste-ready line plus any near-name alternatives so the wrong journal
+  isn't watched silently. With no argument it checks every configured ISSN still
+  resolves — a wrong one doesn't error, it just contributes nothing forever.
+
 ## [1.2.0] — 2026-08-08
 
 Minor rather than patch: venue weighting changes how every item ranks, so a
