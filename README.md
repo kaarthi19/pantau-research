@@ -24,7 +24,10 @@ prints which scorer it actually used.
    `digest.recipient`, and your **workstream `tags`** — the buckets the scorer
    sorts items into (colors are Paul Tol *vibrant*).
 2. In `registry/sources.yaml`, replace the example with your field:
-   - `openalex.queries` — topic searches · `openalex.issns` — your journals
+   - `openalex.queries` — topic searches
+   - `openalex.issns` — your target journals. Don't hunt for ISSNs:
+     `make journals Q="Nature Energy"` prints a paste-ready line, and a
+     bare `make journals` checks the ones you already have still resolve
    - `arxiv.categories` — your arXiv categories · `gnews.queries` — news searches
    - `feeds` — org RSS/Atom feeds (confirm each returns items)
    - `keywords` — power the prefilter and the free keyword scorer;
@@ -58,7 +61,7 @@ Settings → Secrets → Actions. Only the one you choose is needed.
 
 \* `keyword` is `scoring.mode: keyword` rather than a provider.
 
-At the default settings a sweep scores at most 150 items every 4 hours, which
+At the default settings a sweep scores at most 150 items every 8 hours, which
 lands in single-digit dollars a month on a paid provider and inside the free
 tier on Groq or Gemini. Model IDs move around — these are defaults, and
 `scoring.model` overrides any of them.
@@ -192,6 +195,7 @@ make install    # pip install -r requirements.txt
 make dry-run    # collect + per-source counts, no writes
 make run        # full pipeline
 make test       # offline unit tests — no network, no keys
+make journals   # find a journal's ISSN by name, or audit your watchlist
 make vacuum     # reclaim DB space after pruning (occasional; see below)
 open docs/index.html
 ```
@@ -245,7 +249,7 @@ lab, since it puts everyone's collective reading into one radar.
    `zotero_library_type: user|group`, and `zotero_library_id` (your numeric user
    id from the keys page, or the group id from the group URL).
 
-It runs at most weekly (`every_days`), so it doesn't rebuild every 4 hours.
+It runs at most weekly (`every_days`), so it doesn't rebuild on every sweep.
 
 ### Manual alternative (`source: bib`)
 
@@ -260,8 +264,38 @@ committed** (git-ignored) and never leave the machine otherwise. Implementation:
 
 `registry/sources.yaml → openalex.issns` is your **target-journal watchlist** —
 every new paper in those journals (within `window_days`) is pulled and scored.
-Add or remove ISSNs to match your field (find a journal's ISSN on its homepage
-or at portal.issn.org).
+It's keyed by ISSN rather than name because names are ambiguous: *Applied
+Energy*, *ACS Applied Energy Materials* and *Advances in Applied Energy* are
+three different journals.
+
+You don't have to go looking them up. Ask by name and paste the answer in:
+
+```bash
+make journals Q="Nature Energy"
+```
+```
+  - "2058-7546"   # Nature Energy
+
+  - "0306-2619"   # Applied Energy
+    #   other matches: "2574-0962" ACS Applied Energy Materials (11,735 works)
+    #   other matches: "2666-7924" Advances in Applied Energy (286 works)
+```
+
+Near-name journals are listed too, so you don't silently watch the wrong one.
+
+With no argument it **audits the watchlist you already have**:
+
+```bash
+make journals
+```
+```
+  [ok]   0301-4215  Energy Policy                       17,401 works
+  [DEAD] 1234-5678  no journal with this ISSN — it will silently contribute nothing
+```
+
+That check is worth running after any edit. A wrong ISSN doesn't error — it
+just returns nothing, so a journal you believe you're watching quietly
+contributes zero papers forever.
 
 ## Releases
 

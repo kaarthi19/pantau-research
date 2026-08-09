@@ -1,4 +1,4 @@
-.PHONY: install dry-run run collect score render digest test vacuum clean
+.PHONY: install dry-run run collect score render digest test journals vacuum clean
 
 install:
 	pip install -r requirements.txt
@@ -23,6 +23,11 @@ digest:
 
 test:
 	python -m pytest tests/ -q
+
+# make journals Q="Nature Energy"  -> look up an ISSN by name
+# make journals                    -> audit the ISSNs you already watch
+journals:
+	python -m argus.journals "$(Q)"
 
 vacuum:             ## reclaim space after pruning — occasional, produces a big diff
 	python -m argus.run --stage score --vacuum
