@@ -1,5 +1,12 @@
 # ARGUS
 
+> **This is a personal instance. The project lives at
+> [Power-Lab/argus](https://github.com/Power-Lab/argus).**
+>
+> Go there to use ARGUS, report a problem, or send a fix — that's where
+> releases are cut and where issues are read. This repository is one
+> researcher's running copy, kept in sync but not the place to file anything.
+
 **Autonomous Research Gathering Utility System** — a personal, low-maintenance
 radar for a research field. It watches the literature and the news — **papers**
 (OpenAlex, arXiv), **news** (Google News), and **org reports** (RSS) — scores
@@ -298,6 +305,9 @@ just returns nothing, so a journal you believe you're watching quietly
 contributes zero papers forever.
 
 ## Releases
+
+Releases are cut on [Power-Lab/argus](https://github.com/Power-Lab/argus/releases),
+not here. The mechanics, if you maintain a copy:
 
 `argus/__init__.py` holds the canonical version. To cut one:
 
